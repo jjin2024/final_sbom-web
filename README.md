@@ -2,7 +2,7 @@
 
 의존성 파일(`requirements.txt`, `package-lock.json`, `package.json`, `go.mod`, `Cargo.lock`)을 올리면 패키지·버전 목록(SBOM)을 저장하고 표준 형식 CycloneDX JSON으로도 만들며, [OSV](https://osv.dev)에서 알려진 취약점을 조회해 심각도 순으로 보여 주는 웹 서비스입니다. 인증 없는 단일 사용자 데모이며, 로컬 Docker 실행을 기준으로 합니다.
 
-개발 문서(요구사항, 완료 기준, 설계)는 이 저장소 밖의 `dev-doc-web.md`에 있습니다.
+개발 문서(요구사항, 완료 기준, 설계, 변경 기록)는 이 저장소의 [`docs/dev-doc.md`](docs/dev-doc.md)에 있습니다.
 
 ## 진행 상태
 
@@ -20,11 +20,12 @@
 | T10 전체 완료 기준 점검 | 완료 (44개 사례 모두 확인, 한계는 개발 문서 5.3) |
 | T11 CycloneDX 1.5 JSON 출력 | 완료 |
 | T12 입력 파일 종류 확대(Node.js, Go, Rust), OSV 병렬 조회 | 완료 |
-| T13 extras 줄 해석, 이전 실행 대비의 PyPI 이름 정규화 | 완료 (T11~T13 포함 71개 사례 모두 확인) |
+| T13 extras 줄 해석, 이전 실행 대비의 PyPI 이름 정규화 | 완료 |
+| T14 Gemini 호출 효율화 (요약 재사용, 429·401·403 때 중단) | 완료 (T11~T14 포함 82개 사례 모두 확인) |
 
-실제 Gemini 5건 묶음 요약과 사례 39의 실패 사유(토큰 부족)는 하루 한도가 풀린 2026-11-10에 확인했습니다. 컨테이너에서 실제 키로 끝까지 실행하는 것은 아직 확인하지 못했습니다.
+실제 Gemini 5건 묶음 요약, 사례 39의 실패 사유(토큰 부족), 컨테이너에서 실제 키로 끝까지 실행은 하루 한도가 풀린 2026-11-10에 확인했습니다. 아직 확인하지 못한 것은 50건 규모(10회 호출)의 전체 응답 시간입니다.
 
-테스트: 364건 통과, 7건 건너뜀(실제 OSV 호출 5건 `OSV_LIVE_TEST=1`, 실제 Gemini 호출 2건 `GEMINI_LIVE_TEST=1`). 요구사항, 완료 기준, 변경 기록은 저장소 밖의 개발 문서에 있습니다.
+테스트: 396건 통과, 7건 건너뜀(실제 OSV 호출 5건 `OSV_LIVE_TEST=1`, 실제 Gemini 호출 2건 `GEMINI_LIVE_TEST=1`). 요구사항, 완료 기준, 변경 기록은 `docs/dev-doc.md`에 있습니다.
 
 ## 시연 실행
 
@@ -86,8 +87,9 @@ curl -F "file=@requirements.txt" http://localhost:8000/api/projects/demo/scans
 | `GEMINI_MAX_OUTPUT_TOKENS` | `2048` | 요약 요청의 최대 출력 토큰 |
 | `SUMMARY_MAX_ITEMS` | `50` | 요약할 최대 취약점 수 (심각도 높은 순) |
 | `SUMMARY_BATCH_SIZE` | `5` | 한 번에 요약 요청하는 항목 수 |
+| `SUMMARY_CACHE_TTL_DAYS` | `30` | 요약 재사용 기간(일). `/data/_cache/summaries.json`에 저장한 요약을 이 기간 안에는 다시 쓴다(프로젝트 사이 공유). 0이면 캐시를 쓰지 않음 |
 
-요약이 "요약 실패"로 나오면 서버 로그에서 원인을 확인하세요 (`docker logs sbom-web`, 예: `요약 묶음 실패 (5건): HTTP 429`는 사용 한도 초과). **무료 키는 모델 하나당 하루 20회 요청**만 허용합니다. 요약 호출 1번이 1회를 쓰므로 `SUMMARY_MAX_ITEMS=10`이면 점검 1번에 2회, 기본 50건이면 10회를 씁니다. 한도가 차면 요약만 실패하고 표, 이전 실행 대비, 이력, 링크는 정상입니다. 한도는 모델마다 따로라서 `-e GEMINI_MODEL=gemini-3.1-flash-lite`처럼 모델을 바꿔 피할 수 있습니다. 한도를 확인하려면 호출 1번으로 오류 메시지를 보면 됩니다 (`limit: 20 ... retry in ...`).
+요약이 "요약 실패"로 나오면 서버 로그에서 원인을 확인하세요 (`docker logs sbom-web`, 예: `요약 묶음 실패 (5건): HTTP 429`는 사용 한도 초과). **무료 키는 모델 하나당 하루 20회 요청**만 허용합니다. 요약 호출 1번이 1회를 쓰므로 `SUMMARY_MAX_ITEMS=10`이면 점검 1번에 2회, 기본 50건이면 10회를 씁니다. 한도가 차면(HTTP 429, 인증 오류 401·403 포함) 남은 묶음은 요청하지 않고 요약만 실패하며 표, 이전 실행 대비, 이력, 링크는 정상입니다. 한 번 성공한 요약은 저장해 두었다가 같은 취약점이 나오면 호출 없이 "요약됨(재사용)"으로 채우므로 같은 파일을 다시 점검해도 호출이 줄어듭니다(결과 화면에 `요약 호출 N회, 재사용 N건`). 한도는 모델마다 따로라서 `-e GEMINI_MODEL=gemini-3.1-flash-lite`처럼 모델을 바꿔 피할 수 있습니다. 한도를 확인하려면 호출 1번으로 오류 메시지를 보면 됩니다 (`limit: 20 ... retry in ...`).
 
 ## API 키 넣는 법
 
@@ -123,6 +125,8 @@ app/
   parser.py     파일 이름별 해석 (requirements.txt, package-lock.json, package.json, go.mod, Cargo.lock)
   cyclonedx.py  CycloneDX 1.5 JSON 만들기
   compare.py    이전 실행 대비 (PyPI 이름은 PEP 503 정규화)
+  summary.py    Gemini 요약 (SummarySource로 분리, 묶음별 실패, 429·401·403 중단)
+  summary_cache.py  요약 재사용 저장소 (/data/_cache/summaries.json)
   storage.py    결과 파일 저장
   osv.py        OSV 조회 (VulnSource로 분리, 테스트에서 교체)
   severity.py   심각도 등급 변환
