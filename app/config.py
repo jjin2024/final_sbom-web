@@ -3,7 +3,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_UPLOAD_MAX_BYTES = 256 * 1024
+DEFAULT_UPLOAD_MAX_BYTES = 1024 * 1024  # 잠금 파일(package-lock.json 등)은 수백 KB라 256KB에서 1MB로 올림
+DEFAULT_LOOKUP_WORKERS = 8  # OSV를 동시에 조회하는 수
 DEFAULT_TABLE_MAX_ROWS = 15
 DEFAULT_EXTERNAL_TIMEOUT = 10.0
 DEFAULT_OSV_URL = "https://api.osv.dev"
@@ -26,6 +27,7 @@ class Settings:
     table_max_rows: int = DEFAULT_TABLE_MAX_ROWS
     external_timeout: float = DEFAULT_EXTERNAL_TIMEOUT
     osv_url: str = DEFAULT_OSV_URL
+    lookup_workers: int = DEFAULT_LOOKUP_WORKERS
     summary_max_items: int = DEFAULT_SUMMARY_MAX_ITEMS
     summary_batch_size: int = DEFAULT_SUMMARY_BATCH_SIZE
     gemini_url: str = DEFAULT_GEMINI_URL
@@ -45,6 +47,7 @@ class Settings:
             table_max_rows=int(env("TABLE_MAX_ROWS", DEFAULT_TABLE_MAX_ROWS)),
             external_timeout=float(env("EXTERNAL_TIMEOUT_SECONDS", DEFAULT_EXTERNAL_TIMEOUT)),
             osv_url=env("OSV_API_URL", DEFAULT_OSV_URL),
+            lookup_workers=int(env("LOOKUP_WORKERS", DEFAULT_LOOKUP_WORKERS)),
             summary_max_items=int(env("SUMMARY_MAX_ITEMS", DEFAULT_SUMMARY_MAX_ITEMS)),
             summary_batch_size=int(env("SUMMARY_BATCH_SIZE", DEFAULT_SUMMARY_BATCH_SIZE)),
             gemini_url=env("GEMINI_API_URL", DEFAULT_GEMINI_URL),

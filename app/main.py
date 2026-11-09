@@ -12,7 +12,7 @@ from .clock import display_scan_time, now_kst, scan_id
 from .compare import compare
 from .cyclonedx import render as render_cyclonedx
 from .config import Settings
-from .osv import LookupFailed, OsvSource, VulnSource
+from .osv import LookupFailed, OsvSource, VulnSource, query_many
 from .parser import FormatError, Package, parse_upload
 from .report import VulnRow, build_table, render_report, sort_rows
 from .summary import GeminiSource, SummarySource, summarize_rows
@@ -152,11 +152,9 @@ def create_app(
 
         # 취약점 조회. 하나라도 실패하면 조회를 중단한다 (R3-3).
         # 목록 파일은 이미 저장되어 있고, 이 요청의 보고서는 만들지 않으며, 요약 호출도 하지 않는다.
-        rows: list[VulnRow] = []
+        targets = lookup_targets(result.packages)
         try:
-            for name, version, eco in lookup_targets(result.packages):
-                for f in vuln_source.query(name, version, eco):
-                    rows.append(VulnRow(name, version, f.vuln_id, f.severity))
+            found = query_many(vuln_source, targets, settings.lookup_workers)
         except LookupFailed:
             # 실패 원인(주소, 응답 내용)은 응답에 넣지 않는다
             return error(
@@ -165,7 +163,11 @@ def create_app(
                 "잠시 후 다시 시도해 주세요.",
                 scan_id=scan_id(t),
             )
-        rows = sort_rows(rows)
+        rows = sort_rows([
+            VulnRow(name, version, f.vuln_id, f.severity)
+            for (name, version, _eco), findings in zip(targets, found)
+            for f in findings
+        ])
 
         # AI 요약 (R4): 심각도 높은 순으로 최대 N건을 묶음으로 요약한다. 요약 실패 처리(R4-2)는 T9.
         outcome = summarize_rows(

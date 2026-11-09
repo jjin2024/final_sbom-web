@@ -3,6 +3,7 @@ import http.client
 import json
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Callable, Protocol
 
@@ -23,6 +24,23 @@ class VulnSource(Protocol):
     def query(self, name: str, version: str, ecosystem: str) -> list[Finding]:
         """(이름, 버전, 생태계) 하나에 영향을 주는 취약점. 실패하면 LookupFailed."""
         ...
+
+
+def query_many(
+    source: "VulnSource", targets: list[tuple[str, str, str]], workers: int
+) -> list[list[Finding]]:
+    """targets의 조회 결과를 targets와 같은 순서로 돌려준다. workers개씩 동시에 조회하지만 결과 순서는
+    항상 같다. 하나라도 실패하면(LookupFailed) 아직 시작하지 않은 조회는 취소하고 그 예외를 낸다 (R3-3)."""
+    if workers <= 1 or len(targets) <= 1:
+        return [source.query(*t) for t in targets]
+    with ThreadPoolExecutor(max_workers=min(workers, len(targets))) as pool:
+        futures = [pool.submit(source.query, *t) for t in targets]
+        try:
+            return [f.result() for f in futures]
+        except BaseException:
+            for f in futures:
+                f.cancel()
+            raise
 
 
 def parse_record(record: dict) -> Finding:
