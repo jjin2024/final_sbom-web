@@ -1,6 +1,6 @@
 # sbom-web
 
-`requirements.txt` 형식의 파일을 올리면 패키지·버전 목록(SBOM)을 저장하고, [OSV](https://osv.dev)에서 알려진 취약점을 조회해 심각도 순으로 보여 주는 웹 서비스입니다. 인증 없는 단일 사용자 데모이며, 로컬 Docker 실행을 기준으로 합니다.
+의존성 파일(`requirements.txt`, `package-lock.json`, `package.json`, `go.mod`, `Cargo.lock`)을 올리면 패키지·버전 목록(SBOM)을 저장하고 표준 형식 CycloneDX JSON으로도 만들며, [OSV](https://osv.dev)에서 알려진 취약점을 조회해 심각도 순으로 보여 주는 웹 서비스입니다. 인증 없는 단일 사용자 데모이며, 로컬 Docker 실행을 기준으로 합니다.
 
 개발 문서(요구사항, 완료 기준, 설계)는 이 저장소 밖의 `dev-doc-web.md`에 있습니다.
 
@@ -18,10 +18,13 @@
 | T8 AI 요약 (Gemini) | 완료 (실제 Gemini 호출 시험 통과, 컨테이너에서 5건 묶음으로 끝까지는 이후 확인) |
 | T9 AI 요약 실패 처리 | 완료 (묶음별 "요약 실패" 표시) |
 | T10 전체 완료 기준 점검 | 완료 (44개 사례 모두 확인, 한계는 개발 문서 5.3) |
+| T11 CycloneDX 1.5 JSON 출력 | 완료 |
+| T12 입력 파일 종류 확대(Node.js, Go, Rust), OSV 병렬 조회 | 완료 |
+| T13 extras 줄 해석, 이전 실행 대비의 PyPI 이름 정규화 | 완료 (T11~T13 포함 71개 사례 모두 확인) |
 
 확인하지 못한 것: 실제 Gemini로 5건 묶음 요약 성공, 사례 39의 실패 사유(토큰 부족) 확인. 무료 키의 하루 요청 한도(모델당 20회)에 걸려 한도가 풀린 뒤 확인해야 합니다.
 
-테스트: 191건 통과, 3건 건너뜀(실제 OSV 호출 `OSV_LIVE_TEST=1`, 실제 Gemini 호출 `GEMINI_LIVE_TEST=1`). 요구사항, 완료 기준, 변경 기록은 저장소 밖의 개발 문서에 있습니다.
+테스트: 364건 통과, 7건 건너뜀(실제 OSV 호출 5건 `OSV_LIVE_TEST=1`, 실제 Gemini 호출 2건 `GEMINI_LIVE_TEST=1`). 요구사항, 완료 기준, 변경 기록은 저장소 밖의 개발 문서에 있습니다.
 
 ## 시연 실행
 
@@ -42,7 +45,7 @@ docker run -d --name sbom-web -p 8000:8000 -v sbom-data:/data sbom-web
 ```
 
 - 브라우저로 http://localhost:8000 에 접속합니다. 기동 확인은 `/healthz`입니다.
-- 결과는 volume의 `/data/<프로젝트>/`에 `sbom-<시각>.txt`, `vuln-report-<시각>.txt`로 저장됩니다. `-v`를 빼면 컨테이너를 지울 때 이력도 사라집니다.
+- 결과는 volume의 `/data/<프로젝트>/`에 `sbom-<시각>.txt`, `sbom-<시각>.cdx.json`(CycloneDX 1.5), `vuln-report-<시각>.txt`로 저장됩니다. `-v`를 빼면 컨테이너를 지울 때 이력도 사라집니다.
 - 시각은 한국 시간(KST)으로 고정입니다.
 - 인증이 없으므로 외부에 공개하지 마세요.
 
@@ -52,12 +55,15 @@ docker run -d --name sbom-web -p 8000:8000 -v sbom-data:/data sbom-web
 curl -F "file=@requirements.txt" http://localhost:8000/api/projects/demo/scans
 ```
 
+파일 이름으로 형식을 정합니다: `package-lock.json`, `package.json`(npm), `go.mod`(Go), `Cargo.lock`(crates.io). 그 외 이름은 `requirements.txt`(PyPI) 형식으로 읽습니다. 선언 파일은 직접 의존성만, 잠금 파일은 전이 의존성까지 담습니다.
+
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | POST | `/api/projects/{project}/scans` | 파일(필드 `file`)을 올려 수집, 저장, 조회. 201, 이전 실행 대비(`comparison`)와 내려받기 경로(`links`) 포함. 같은 초에 같은 프로젝트로 다시 요청하면 409, 조회 실패는 502 |
 | GET | `/api/projects/{project}/scans` | 프로젝트의 이력(최신순). 이력이 없으면 빈 목록 |
 | GET | `/api/projects/{project}/scans/{scan_id}/sbom` | 목록 파일 내려받기 (없으면 404) |
 | GET | `/api/projects/{project}/scans/{scan_id}/report` | 보고서 내려받기 (조회 실패한 스캔은 없어서 404) |
+| GET | `/api/projects/{project}/scans/{scan_id}/cyclonedx` | CycloneDX JSON 내려받기 (파일이 없는 과거 스캔은 404) |
 | GET | `/healthz` | 기동 확인 |
 
 프로젝트 이름은 영문, 숫자, `.`, `_`, `-`만 쓰고 영문 또는 숫자로 시작하는 1~50자입니다.
@@ -67,7 +73,8 @@ curl -F "file=@requirements.txt" http://localhost:8000/api/projects/demo/scans
 | 이름 | 기본값 | 설명 |
 |---|---|---|
 | `DATA_DIR` | `/data` | 결과 파일 폴더 |
-| `UPLOAD_MAX_BYTES` | `262144` | 업로드 크기 상한 |
+| `UPLOAD_MAX_BYTES` | `1048576` | 업로드 크기 상한 |
+| `LOOKUP_WORKERS` | `8` | OSV 동시 조회 수 (잠금 파일 460개 기준 순서대로 218초, 8개 동시 27초) |
 | `TABLE_MAX_ROWS` | `15` | 응답용 표의 최대 행 수 |
 | `EXTERNAL_TIMEOUT_SECONDS` | `10` | 외부 API 호출 제한 시간 |
 | `OSV_API_URL` | `https://api.osv.dev` | OSV 주소 (API 키 불필요) |
@@ -113,7 +120,9 @@ python -m venv .venv
 ```
 app/
   main.py       API와 요청 흐름
-  parser.py     requirements.txt 해석
+  parser.py     파일 이름별 해석 (requirements.txt, package-lock.json, package.json, go.mod, Cargo.lock)
+  cyclonedx.py  CycloneDX 1.5 JSON 만들기
+  compare.py    이전 실행 대비 (PyPI 이름은 PEP 503 정규화)
   storage.py    결과 파일 저장
   osv.py        OSV 조회 (VulnSource로 분리, 테스트에서 교체)
   severity.py   심각도 등급 변환
