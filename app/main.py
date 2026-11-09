@@ -1,10 +1,11 @@
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Callable
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.datastructures import UploadFile
 
 from .clock import now_kst, scan_id
@@ -14,6 +15,7 @@ from .parser import Package, parse_requirements
 from .report import VulnRow, build_table, render_report, sort_rows
 from .storage import StorageError, save_report, save_sbom
 
+STATIC_DIR = Path(__file__).parent / "static"
 PROJECT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$")
 
 
@@ -39,6 +41,10 @@ def create_app(
     settings = settings or Settings.from_env()
     vuln_source = vuln_source or OsvSource(settings.osv_url, settings.external_timeout)
     app = FastAPI()
+
+    @app.get("/", include_in_schema=False)
+    async def index():
+        return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
     @app.get("/healthz")
     async def healthz():

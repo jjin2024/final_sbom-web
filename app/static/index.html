@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f7f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101214" media="(prefers-color-scheme: dark)">
+<title>SBOM 점검</title>
+<link rel="icon" href="data:,">
+<style>
+  /* 색, 반경, 간격은 모두 토큰으로 둔다. 포인트 색은 하나(--accent)만 쓴다. */
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f8;
+    --surface: #ffffff;
+    --text: #17191c;
+    --muted: #596069;
+    --line: #dfe2e6;
+    --accent: #0b6b5d;
+    --accent-ink: #ffffff;
+    --accent-soft: #e3f1ee;
+    --focus: #0b6b5d;
+    --danger-bg: #fbeaea;
+    --danger-line: #e5b4b4;
+    --danger-ink: #8a1f1f;
+    --warn-bg: #fdf3dc;
+    --warn-line: #e8cf92;
+    --warn-ink: #6b4a00;
+    --sev-critical-bg: #f7d9d9;
+    --sev-critical-ink: #7a1414;
+    --sev-high-bg: #fbe3d3;
+    --sev-high-ink: #7d3300;
+    --sev-medium-bg: #fcf0cc;
+    --sev-medium-ink: #5e4300;
+    --sev-low-bg: #e7ecf0;
+    --sev-low-ink: #3b4650;
+    --radius: 8px;
+    --font: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101214;
+      --surface: #171a1d;
+      --text: #eceef0;
+      --muted: #a2a9b1;
+      --line: #2a2f34;
+      --accent: #5fd0bc;
+      --accent-ink: #06231e;
+      --accent-soft: #14312c;
+      --focus: #5fd0bc;
+      --danger-bg: #331818;
+      --danger-line: #6a3030;
+      --danger-ink: #ffb4b4;
+      --warn-bg: #33290f;
+      --warn-line: #6b5a22;
+      --warn-ink: #f0d58a;
+      --sev-critical-bg: #4a1c1c;
+      --sev-critical-ink: #ffc2c2;
+      --sev-high-bg: #4a2a15;
+      --sev-high-ink: #ffcfa8;
+      --sev-medium-bg: #46380f;
+      --sev-medium-ink: #f5dc8c;
+      --sev-low-bg: #272d33;
+      --sev-low-ink: #c5ccd3;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 16px;
+    line-height: 1.6;
+    word-break: keep-all;           /* 한글을 어절 중간에서 줄바꿈하지 않는다 */
+    overflow-wrap: anywhere;        /* 긴 영문 ID는 넘치지 않게 꺾는다 */
+  }
+  .page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 16px 64px;
+  }
+  header { margin-bottom: 32px; }
+  h1 { margin: 0 0 8px; font-size: 1.75rem; line-height: 1.2; letter-spacing: -0.01em; text-wrap: balance; }
+  .lead { margin: 0; color: var(--muted); max-width: 60ch; }
+
+  .layout { display: grid; grid-template-columns: 1fr; gap: 40px; align-items: start; }
+  @media (min-width: 960px) {
+    .page { padding: 64px 32px 96px; }
+    .layout { grid-template-columns: 340px minmax(0, 1fr); gap: 56px; }
+    form.request { position: sticky; top: 32px; }
+  }
+
+  /* 요청 폼 */
+  form.request { display: grid; gap: 24px; }
+  .field { display: grid; gap: 8px; }
+  label, .label { font-weight: 600; font-size: 0.9375rem; }
+  .help { margin: 0; color: var(--muted); font-size: 0.875rem; }
+  input[type="text"] {
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 12px;
+    font: inherit;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--muted);
+    border-radius: var(--radius);
+  }
+  input[type="file"] {
+    width: 100%;
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 0.9375rem;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px dashed var(--muted);
+    border-radius: var(--radius);
+  }
+  input[type="file"]::file-selector-button {
+    margin-right: 12px;
+    min-height: 32px;
+    padding: 4px 12px;
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--muted);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  button.primary {
+    min-height: 48px;
+    padding: 0 24px;
+    font: inherit;
+    font-weight: 600;
+    color: var(--accent-ink);
+    background: var(--accent);
+    border: 0;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: transform 120ms ease, opacity 120ms ease;
+  }
+  button.primary, input { touch-action: manipulation; }
+  button.primary:hover:not([disabled]) { filter: brightness(1.08); }
+  button.primary:active { transform: translateY(1px) scale(0.99); }
+  button.primary[disabled] { opacity: 0.6; cursor: progress; }
+
+  /* 결과 영역 */
+  .result { min-width: 0; }
+  .result:focus { outline: none; }
+  h2 { margin: 0; font-size: 1.25rem; line-height: 1.3; text-wrap: balance; }
+  .result-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 24px; }
+  .scan-id { color: var(--muted); font-family: var(--mono); font-size: 0.875rem; }
+
+  dl.stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    margin: 0 0 24px;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  @media (min-width: 640px) { dl.stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .stat { padding: 16px 0; }
+  @media (min-width: 640px) { .stat + .stat { padding-left: 24px; border-left: 1px solid var(--line); } }
+  dl.stats dt { color: var(--muted); font-size: 0.875rem; }
+  dl.stats dd { margin: 0; font-size: 1.75rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.3; }
+
+  .notes { margin: 0 0 24px; padding: 0; list-style: none; display: grid; gap: 8px; color: var(--muted); font-size: 0.9375rem; }
+
+  .alert {
+    margin: 0 0 24px;
+    padding: 12px 16px;
+    border: 1px solid;
+    border-radius: var(--radius);
+  }
+  .alert strong { display: block; }
+  .alert.error { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-ink); }
+  .alert.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+  table { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 0.9375rem; }
+  caption { padding: 12px 16px; text-align: left; font-weight: 600; }
+  th, td { padding: 10px 16px; text-align: left; vertical-align: middle; }
+  thead th { color: var(--muted); font-size: 0.8125rem; font-weight: 600; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tbody tr + tr td { border-top: 1px solid var(--line); }
+  td.id { font-family: var(--mono); font-size: 0.875rem; white-space: nowrap; }
+  .sev {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: var(--radius);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .sev[data-level="심각"] { background: var(--sev-critical-bg); color: var(--sev-critical-ink); }
+  .sev[data-level="높음"] { background: var(--sev-high-bg); color: var(--sev-high-ink); }
+  .sev[data-level="보통"] { background: var(--sev-medium-bg); color: var(--sev-medium-ink); }
+  .sev[data-level="낮음"], .sev[data-level="알 수 없음"] { background: var(--sev-low-bg); color: var(--sev-low-ink); }
+  .muted { color: var(--muted); }
+
+  /* 좁은 화면: 심각도가 화면 밖으로 밀리지 않도록 행을 "라벨 값" 블록으로 바꾼다 */
+  @media (max-width: 639px) {
+    table { min-width: 0; }
+    table, tbody, caption { display: block; }
+    thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+    tbody tr { display: block; padding: 12px 16px; }
+    tbody tr + tr { border-top: 1px solid var(--line); }
+    tbody tr + tr td { border-top: 0; }
+    td { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 8px; padding: 3px 0; }
+    td::before { content: attr(data-label); color: var(--muted); font-size: 0.8125rem; }
+    td .sev { justify-self: start; }
+  }
+  .more { margin: 12px 0 0; color: var(--muted); }
+
+  .empty { padding: 0; max-width: 46ch; }
+  .empty h2 { margin-bottom: 8px; }
+  .empty p { margin: 0; color: var(--muted); }
+  .clear { padding: 24px 0; }
+
+  /* 로딩: 결과 표와 같은 모양의 스켈레톤 */
+  .skeleton { display: grid; gap: 12px; }
+  .bar { height: 20px; border-radius: var(--radius); background: var(--line); }
+  .bar.tall { height: 72px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .bar { animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.55; } }
+  }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>SBOM 점검</h1>
+    <p class="lead">requirements.txt를 올리면 패키지와 버전 목록을 저장하고, 알려진 취약점을 심각도 순으로 보여 줍니다.</p>
+  </header>
+
+  <main class="layout">
+    <form class="request" id="scan-form">
+      <div class="field">
+        <label for="project">프로젝트 이름</label>
+        <input type="text" id="project" name="project" autocomplete="off" spellcheck="false" required aria-describedby="project-help">
+        <p class="help" id="project-help">영문, 숫자, 점(.), 밑줄(_), 하이픈(-)만 쓰고 영문 또는 숫자로 시작합니다. 최대 50자.</p>
+      </div>
+      <div class="field">
+        <label for="file">패키지 목록 파일</label>
+        <input type="file" id="file" name="file" required aria-describedby="file-help">
+        <p class="help" id="file-help">requirements.txt 형식의 텍스트 파일 1개. 파일 이름은 상관없습니다.</p>
+      </div>
+      <button type="submit" class="primary" id="submit">점검 시작</button>
+    </form>
+
+    <section class="result" id="result" tabindex="-1" aria-labelledby="result-title" aria-live="polite" aria-busy="false">
+      <div class="empty" id="empty">
+        <h2 id="result-title">아직 결과가 없습니다</h2>
+        <p>프로젝트 이름을 적고 파일을 올리면 수집 건수와 취약점 표가 여기에 나옵니다.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var form = document.getElementById("scan-form");
+  var submit = document.getElementById("submit");
+  var result = document.getElementById("result");
+  var SUBMIT_LABEL = submit.textContent;
+
+  // 서버가 준 문자열은 textContent로만 넣는다 (HTML로 해석하지 않음).
+  function el(tag, props, children) {
+    var node = document.createElement(tag);
+    Object.keys(props || {}).forEach(function (k) {
+      if (k === "text") node.textContent = props[k];
+      else if (k === "class") node.className = props[k];
+      else node.setAttribute(k, props[k]);
+    });
+    (children || []).forEach(function (c) { if (c) node.appendChild(c); });
+    return node;
+  }
+
+  function show(nodes) {
+    result.replaceChildren.apply(result, nodes);
+    result.setAttribute("aria-busy", "false");
+  }
+
+  function skeleton() {
+    return el("div", { class: "skeleton", "aria-hidden": "true" }, [
+      el("div", { class: "bar tall" }),
+      el("div", { class: "bar" }), el("div", { class: "bar" }),
+      el("div", { class: "bar" }), el("div", { class: "bar" })
+    ]);
+  }
+
+  function errorView(reason) {
+    var box = el("div", { class: "alert error", role: "alert" }, [
+      el("strong", { text: "점검하지 못했습니다" }),
+      el("span", { text: reason })
+    ]);
+    return [el("h2", { id: "result-title", class: "sr-only", text: "점검 결과" }), box];
+  }
+
+  function stat(label, value) {
+    return el("div", { class: "stat" }, [
+      el("dt", { text: label }),
+      el("dd", { text: String(value) })
+    ]);
+  }
+
+  var COLUMNS = ["패키지", "버전", "취약점 ID", "심각도", "요약 상태", "요약"];
+
+  function cell(label, text, cls, identifier) {
+    // data-label은 좁은 화면에서 라벨로 쓰고, role은 CSS로 표 구조를 바꿔도 표로 읽히게 한다.
+    // identifier: 패키지명, 버전, 취약점 ID는 번역기가 바꾸지 않게 한다.
+    var td = el("td", { "data-label": label, role: "cell" });
+    if (identifier) td.setAttribute("translate", "no");
+    if (cls) td.className = cls;
+    td.textContent = text;
+    return td;
+  }
+
+  function tableView(rows) {
+    var head = el("tr", { role: "row" }, COLUMNS.map(function (h) {
+      return el("th", { scope: "col", role: "columnheader", text: h });
+    }));
+    var body = el("tbody", { role: "rowgroup" }, rows.map(function (r) {
+      var sev = el("td", { "data-label": COLUMNS[3], role: "cell" });
+      sev.appendChild(el("span", { class: "sev", "data-level": r.severity, text: r.severity }));
+      return el("tr", { role: "row" }, [
+        cell(COLUMNS[0], r.package, "", true),
+        cell(COLUMNS[1], r.version, "", true),
+        cell(COLUMNS[2], r.vuln_id, "id", true),
+        sev,
+        cell(COLUMNS[4], r.summary_status || "-", r.summary_status ? "" : "muted"),
+        cell(COLUMNS[5], r.summary || "-", r.summary ? "" : "muted")
+      ]);
+    }));
+    var table = el("table", { role: "table" }, [
+      el("caption", { text: "취약점 (심각도 높은 순)" }),
+      el("thead", { role: "rowgroup" }, [head]),
+      body
+    ]);
+    return el("div", { class: "table-wrap", role: "region", "aria-label": "취약점 표", tabindex: "0" }, [table]);
+  }
+
+  function resultView(d) {
+    var nodes = [];
+    nodes.push(el("div", { class: "result-head" }, [
+      el("h2", { id: "result-title", text: "점검 결과" }),
+      el("span", { class: "scan-id", text: "스캔 ID " + d.scan_id })
+    ]));
+
+    nodes.push(el("dl", { class: "stats" }, [
+      stat("수집", d.collected + "건"),
+      stat("건너뛴 줄", d.skipped_lines + "건"),
+      stat("조회 제외", d.not_looked_up + "건"),
+      stat("취약점", d.vulnerabilities_total + "건")
+    ]));
+
+    var notes = [];
+    if (d.skipped_lines > 0) notes.push("해석할 수 없는 줄 " + d.skipped_lines + "건은 건너뛰었습니다.");
+    if (d.not_looked_up > 0) notes.push("확정 버전(==)이 없는 " + d.not_looked_up + "건은 취약점을 조회하지 않았습니다.");
+    if (notes.length) {
+      nodes.push(el("ul", { class: "notes" }, notes.map(function (t) { return el("li", { text: t }); })));
+    }
+
+    (d.warnings || []).forEach(function (w) {
+      nodes.push(el("div", { class: "alert warn", role: "status" }, [el("strong", { text: "경고" }), el("span", { text: w })]));
+    });
+
+    if (d.table && d.table.length) {
+      nodes.push(tableView(d.table));
+      if (d.table_omitted > 0) nodes.push(el("p", { class: "more", text: d.message || ("외 " + d.table_omitted + "건은 보고서 참조") }));
+    } else {
+      nodes.push(el("div", { class: "clear" }, [
+        el("h3", { text: d.message || "발견된 취약점 없음" }),
+        (d.summary && d.summary.skipped_reason) ? el("p", { class: "muted", text: "요약 건너뜀: " + d.summary.skipped_reason }) : null
+      ]));
+    }
+    return nodes;
+  }
+
+  function reasonFrom(status, body) {
+    // 서버가 준 사유(error)만 보여 준다. 내부 정보나 스택 트레이스는 화면에 넣지 않는다.
+    if (body && typeof body.error === "string") return body.error;
+    return "요청을 처리하지 못했습니다 (상태 코드 " + status + ")";
+  }
+
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var name = document.getElementById("project").value.trim();
+    var file = document.getElementById("file").files[0];
+    if (!name || !file) return;
+
+    submit.disabled = true;
+    submit.textContent = "점검 중…";
+    result.setAttribute("aria-busy", "true");
+    show([el("h2", { id: "result-title", class: "sr-only", text: "점검 결과" }), skeleton()]);
+    result.setAttribute("aria-busy", "true");
+
+    var data = new FormData();
+    data.append("file", file);
+
+    fetch("/api/projects/" + encodeURIComponent(name) + "/scans", { method: "POST", body: data })
+      .then(function (res) {
+        return res.json().catch(function () { return null; }).then(function (body) {
+          if (res.status === 201 && body) show(resultView(body));
+          else show(errorView(reasonFrom(res.status, body)));
+        });
+      })
+      .catch(function () { show(errorView("서버에 연결할 수 없음")); })
+      .then(function () {
+        submit.disabled = false;
+        submit.textContent = SUBMIT_LABEL;
+        result.focus();
+      });
+  });
+})();
+</script>
+</body>
+</html>
