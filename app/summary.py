@@ -13,10 +13,12 @@ from dataclasses import dataclass, replace
 from typing import Callable, Protocol
 
 from .report import VulnRow
+from .summary_cache import SummaryCache
 
 log = logging.getLogger("sbom.summary")
 
 STATUS_OK = "요약됨"
+STATUS_REUSED = "요약됨(재사용)"
 STATUS_FAILED = "요약 실패"
 STATUS_EXCLUDED = "요약 제외(한도 초과)"
 STATUS_NO_KEY = "요약 안 함(API 키 없음)"
@@ -25,8 +27,17 @@ REASON_NO_VULNS = "요약할 취약점 없음"
 REASON_NO_KEY = "API 키 없음"
 
 
+# 이 HTTP 상태로 실패하면 남은 묶음도 같은 이유로 실패하므로 더 요청하지 않는다(사용 한도 초과, 인증·권한 오류)
+FATAL_HTTP_CODES = frozenset({401, 403, 429})
+
+
 class SummaryFailed(Exception):
-    """정상 완료 응답이 아님(인증 오류, 타임아웃, 응답이 중간에 잘림 등). 원인은 구분하지 않는다 (X5)."""
+    """정상 완료 응답이 아님(인증 오류, 타임아웃, 응답이 중간에 잘림 등). 원인은 응답에 구분해 넣지 않는다 (X5).
+    fatal이면(HTTP 429, 401, 403) 남은 묶음을 요청하지 않는다 (R4-2)."""
+
+    def __init__(self, message: str = "", fatal: bool = False):
+        super().__init__(message)
+        self.fatal = fatal
 
 
 @dataclass(frozen=True)
@@ -136,7 +147,7 @@ class GeminiSource:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             # 진단용으로 상태 코드(숫자)만 남긴다. 주소, 헤더(키), 응답 본문은 넣지 않는다
-            raise SummaryFailed(f"HTTP {e.code}") from None
+            raise SummaryFailed(f"HTTP {e.code}", fatal=e.code in FATAL_HTTP_CODES) from None
         except (urllib.error.URLError, TimeoutError, OSError, ValueError, http.client.HTTPException) as e:
             # 시간 초과, 연결 끊김, 응답이 중간에 잘림(IncompleteRead) 등. 원인(주소, 응답 내용)은 넘기지 않는다
             raise SummaryFailed(type(e).__name__) from None
@@ -152,6 +163,8 @@ class SummaryOutcome:
     failed: int = 0
     excluded: int = 0
     skipped_reason: str | None = None  # 요약 단계를 건너뛴 이유 (키 없음, 취약점 없음)
+    calls: int = 0  # 이 요청에서 Gemini를 부른 횟수
+    reused: int = 0  # 캐시의 요약을 다시 쓴 건수(성공 건수에 포함)
 
     @property
     def attempted(self) -> bool:
@@ -160,6 +173,15 @@ class SummaryOutcome:
     @property
     def aggregate(self) -> str:
         return f"요약 {self.succeeded}건 성공, {self.failed}건 실패, {self.excluded}건 제외"
+
+    @property
+    def usage_line(self) -> str:
+        return f"요약 호출 {self.calls}회, 재사용 {self.reused}건"
+
+    @property
+    def report_text(self) -> str:
+        """보고서의 `## 요약 집계` 구역 내용. 건너뛴 경우에는 안내만 넣는다."""
+        return f"{self.aggregate}\n{self.usage_line}" if self.attempted else self.skip_message
 
     @property
     def skip_message(self) -> str:
@@ -175,13 +197,20 @@ class SummaryOutcome:
             "failed": self.failed,
             "excluded": self.excluded,
             "text": self.aggregate,
+            "calls": self.calls,
+            "reused": self.reused,
         }
 
 
 def summarize_rows(
-    rows: list[VulnRow], source: SummarySource | None, max_items: int, batch_size: int
+    rows: list[VulnRow],
+    source: SummarySource | None,
+    max_items: int,
+    batch_size: int,
+    cache: SummaryCache | None = None,
 ) -> SummaryOutcome:
-    """rows는 심각도 순으로 정렬되어 있어야 한다 (R3-2). 앞에서부터 max_items건을 batch_size건씩 요약한다."""
+    """rows는 심각도 순으로 정렬되어 있어야 한다 (R3-2). 앞에서부터 max_items건이 요약 대상이다(캐시와 무관).
+    대상 중 캐시에 있는 항목은 호출 없이 채우고(R4-3), 나머지를 batch_size건씩 묶어 요청한다."""
     if not rows:
         return SummaryOutcome(rows, skipped_reason=REASON_NO_VULNS)
     if source is None:
@@ -190,11 +219,24 @@ def summarize_rows(
         )
 
     targets, rest = rows[:max_items], rows[max_items:]
-    done: list[VulnRow] = []
-    succeeded = failed = 0
-    for start in range(0, len(targets), batch_size):
-        batch = targets[start:start + batch_size]
-        # 묶음마다 성공과 실패를 따로 판정한다 (R4-2). 실패해도 이후 묶음은 계속 시도한다.
+    result: dict[int, VulnRow] = {}  # 대상 안에서의 위치 -> 결과 행
+    misses: list[int] = []
+    reused = 0
+    for pos, r in enumerate(targets):
+        text = cache.get(r.package, r.version, r.vuln_id) if cache else None
+        if text is None:
+            misses.append(pos)
+        else:
+            result[pos] = replace(r, summary_status=STATUS_REUSED, summary=text)
+            reused += 1
+
+    calls = failed = 0
+    succeeded = reused
+    for start in range(0, len(misses), batch_size):
+        batch_pos = misses[start:start + batch_size]
+        batch = [targets[p] for p in batch_pos]
+        # 묶음마다 성공과 실패를 따로 판정한다 (R4-2). 일반 실패는 해당 묶음만 실패로 표시하고 계속한다.
+        calls += 1
         try:
             texts = source.summarize([SummaryItem(r.package, r.version, r.vuln_id) for r in batch])
             if len(texts) != len(batch):
@@ -202,10 +244,26 @@ def summarize_rows(
         except SummaryFailed as e:
             # 원인은 서버 로그에만 남긴다(키, 주소, 응답 내용은 없는 짧은 메시지). 응답과 화면에는 넣지 않는다
             log.warning("요약 묶음 실패 (%d건): %s", len(batch), e)
-            done += [replace(r, summary_status=STATUS_FAILED) for r in batch]
+            for p, r in zip(batch_pos, batch):
+                result[p] = replace(r, summary_status=STATUS_FAILED)
             failed += len(batch)
+            if e.fatal:
+                # 사용 한도 초과나 인증 오류는 남은 묶음도 같은 이유로 실패하므로 요청하지 않는다
+                remaining = misses[start + batch_size:]
+                log.warning("요약 중단: 남은 %d건은 요청하지 않음 (%s)", len(remaining), e)
+                for p in remaining:
+                    result[p] = replace(targets[p], summary_status=STATUS_FAILED)
+                failed += len(remaining)
+                break
             continue
-        done += [replace(r, summary_status=STATUS_OK, summary=t) for r, t in zip(batch, texts)]
+        for p, r, t in zip(batch_pos, batch, texts):
+            result[p] = replace(r, summary_status=STATUS_OK, summary=t)
+            if cache:
+                cache.put(r.package, r.version, r.vuln_id, t)
         succeeded += len(batch)
     excluded = [replace(r, summary_status=STATUS_EXCLUDED) for r in rest]
-    return SummaryOutcome(done + excluded, succeeded=succeeded, failed=failed, excluded=len(excluded))
+    done = [result[p] for p in range(len(targets))]
+    return SummaryOutcome(
+        done + excluded, succeeded=succeeded, failed=failed, excluded=len(excluded),
+        calls=calls, reused=reused,
+    )

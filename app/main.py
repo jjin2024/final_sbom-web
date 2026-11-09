@@ -16,6 +16,7 @@ from .osv import LookupFailed, OsvSource, VulnSource, query_many
 from .parser import FormatError, Package, parse_upload
 from .report import VulnRow, build_table, render_report, sort_rows
 from .summary import GeminiSource, SummarySource, summarize_rows
+from .summary_cache import SummaryCache
 from .storage import (
     ScanExists,
     StorageError,
@@ -170,12 +171,23 @@ def create_app(
         ])
 
         # AI 요약 (R4): 심각도 높은 순으로 최대 N건을 묶음으로 요약한다. 요약 실패 처리(R4-2)는 T9.
+        # 키가 없으면 캐시도 쓰지 않는다. 캐시를 읽을 수 없으면 새로 만든다(요청은 실패하지 않음).
+        cache = (
+            SummaryCache(settings.data_dir, settings.summary_cache_ttl_days, t)
+            if summary_source is not None
+            else None
+        )
         outcome = summarize_rows(
-            rows, summary_source, settings.summary_max_items, settings.summary_batch_size
+            rows, summary_source, settings.summary_max_items, settings.summary_batch_size, cache
         )
         rows = outcome.rows
+        if cache:
+            try:
+                cache.save()
+            except OSError:
+                warnings.append("요약 캐시 저장 실패")
         table, omitted = build_table(rows, settings.table_max_rows)
-        summary_line = outcome.aggregate if outcome.attempted else outcome.skip_message
+        summary_line = outcome.report_text
 
         report_saved = True
         try:
