@@ -94,3 +94,14 @@ def test_index_shows_cyclonedx_links_only_when_the_server_gave_one():
     assert "function optLinkHtml(" in text
     assert text.count("optLinkHtml(l.cyclonedx,'cyclonedx','cyclonedx '+id)") == 2  # 결과와 이력
     assert "safeHref(href)?linkHtml(href,label,aria):''" in text  # 형식 검사를 통과한 값만
+
+
+def test_index_lists_the_supported_file_names_and_does_not_block_them():
+    # T12: 도움말에 지원하는 파일 이름을 보여 주고, 파일 선택창의 accept가 새 파일 이름을 막지 않는다
+    text = INDEX.read_text(encoding="utf-8")
+    help_text = text.split('id="file-help">')[1].split("</p>")[0]
+    for name in ["requirements.txt", "package-lock.json", "package.json", "go.mod", "Cargo.lock"]:
+        assert name in help_text, name
+    accept = text.split('id="package-file" type="file" accept="')[1].split('"')[0]
+    for extension in [".txt", ".json", ".mod", ".lock"]:  # 위 파일 이름의 확장자
+        assert extension in accept.split(","), extension
