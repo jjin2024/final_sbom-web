@@ -82,13 +82,19 @@ def test_case39_incomplete_response_marks_the_batch_failed(data_dir):
     os.environ.get("GEMINI_LIVE_TEST") != "1" or not os.environ.get("GEMINI_API_KEY"),
     reason="GEMINI_LIVE_TEST=1이고 GEMINI_API_KEY가 설정된 터미널에서만 실제 Gemini 호출",
 )
-def test_case39_real_gemini_with_one_output_token(data_dir):
+def test_case39_real_gemini_with_one_output_token(data_dir, caplog):
+    caplog.set_level(logging.WARNING, logger="sbom.summary")
     s = Settings(data_dir=data_dir, gemini_api_key=os.environ["GEMINI_API_KEY"], gemini_max_output_tokens=1,
                  gemini_timeout=60)
     c = TestClient(create_app(s, vuln_source=FakeSource(SET_D)))  # 실제 Gemini, 가짜 OSV
     body = upload(c, content=FILE_D).json()
     assert set(statuses(body).values()) == {"요약 실패"}
     assert body["summary"]["failed"] == 3 and len(body["table"]) == 3
+    # 문서의 의도는 "정상 완료되지 않은 응답"(토큰 부족으로 잘림). 429나 400 같은 다른 사유로 실패한 것이면
+    # 통과하지 않고 사유를 보여 준다.
+    reasons = [m for m in caplog.messages if "요약 묶음 실패" in m]
+    assert reasons, "요약 실패 로그가 없음"
+    assert any("not completed" in m for m in reasons), f"실패 사유가 응답 미완료(토큰 부족)가 아님: {reasons}"
 
 
 # ---- 그 밖의 경계 ----
