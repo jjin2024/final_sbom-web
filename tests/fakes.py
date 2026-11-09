@@ -2,6 +2,17 @@
 from app.osv import Finding, LookupFailed
 
 
+class FakeSummary:
+    """테스트용 가짜 Gemini. 어떤 요청(묶음)이 몇 번 갔는지 기록한다."""
+
+    def __init__(self):
+        self.calls: list[list] = []  # 호출마다 SummaryItem 목록
+
+    def summarize(self, items):
+        self.calls.append(list(items))
+        return [f"요약:{i.vuln_id}" for i in items]
+
+
 class FakeSource:
     def __init__(self, responses=None, fail=False, fail_for=()):
         self.responses = responses or {}

@@ -1,4 +1,4 @@
-"""보고서·표 구성 (R3-2): 정렬, 응답용 표 상위 N행, vuln-report 파일 내용."""
+"""보고서·표 구성 (R3-2): 정렬, 응답용 표 상위 N행, vuln-report 파일 내용 (요약은 R4)."""
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -12,7 +12,7 @@ class VulnRow:
     version: str
     vuln_id: str
     severity: str | None
-    summary_status: str = ""  # T8에서 채움 (T3에서는 비워 둠)
+    summary_status: str = ""
     summary: str = ""
 
 
@@ -42,7 +42,14 @@ def build_table(rows: list[VulnRow], max_rows: int) -> tuple[list[dict], int]:
     return [table_row(r) for r in shown], len(rows) - len(shown)
 
 
-def render_report(project: str, scan: str, t: datetime, rows: list[VulnRow]) -> str:
+def render_report(
+    project: str,
+    scan: str,
+    t: datetime,
+    rows: list[VulnRow],
+    summary_line: str | None = None,
+) -> str:
+    """summary_line: 요약 집계(`요약 N건 성공, ...`) 또는 요약을 건너뛴 안내."""
     lines = [
         "# 취약점 보고서",
         f"# 프로젝트: {project}",
@@ -54,5 +61,14 @@ def render_report(project: str, scan: str, t: datetime, rows: list[VulnRow]) -> 
     else:
         lines.append(f"## 취약점 {len(rows)}건 (심각도 순)")
         for r in rows:
-            lines.append(f"{r.vuln_id} {r.package} {r.version} {r.severity or UNKNOWN}")
+            status = f" [{r.summary_status}]" if r.summary_status else ""
+            lines.append(f"{r.vuln_id} {r.package} {r.version} {r.severity or UNKNOWN}{status}")
+        summarized = [r for r in rows if r.summary]
+        if summarized:
+            lines.append("## 요약")
+            for r in summarized:
+                lines.append(f"{r.vuln_id} {r.package} {r.version}: {r.summary}")
+    if summary_line:
+        lines.append("## 요약 집계")
+        lines.append(summary_line)
     return "\n".join(lines) + "\n"

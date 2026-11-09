@@ -14,6 +14,7 @@ from .config import Settings
 from .osv import LookupFailed, OsvSource, VulnSource
 from .parser import Package, parse_requirements
 from .report import VulnRow, build_table, render_report, sort_rows
+from .summary import GeminiSource, SummarySource, summarize_rows
 from .storage import (
     ScanExists,
     StorageError,
@@ -53,10 +54,21 @@ def create_app(
     settings: Settings | None = None,
     clock: Callable[[], datetime] = now_kst,
     vuln_source: VulnSource | None = None,
+    summary_source: SummarySource | None = None,
 ) -> FastAPI:
-    """clock과 vuln_source는 테스트에서 고정 값과 가짜 응답으로 바꿔 끼운다 (3.1)."""
+    """clock, vuln_source, summary_source는 테스트에서 고정 값과 가짜 응답으로 바꿔 끼운다 (3.1).
+    summary_source를 주지 않으면 API 키(환경 변수 GEMINI_API_KEY)가 있을 때만 Gemini를 쓰고,
+    키가 없으면 요약을 건너뛴다 (R4)."""
     settings = settings or Settings.from_env()
     vuln_source = vuln_source or OsvSource(settings.osv_url, settings.external_timeout)
+    if summary_source is None and settings.gemini_api_key:
+        summary_source = GeminiSource(
+            settings.gemini_api_key,
+            settings.gemini_url,
+            settings.gemini_model,
+            settings.external_timeout,
+            settings.gemini_max_output_tokens,
+        )
     app = FastAPI()
 
     @app.get("/", include_in_schema=False)
@@ -129,12 +141,21 @@ def create_app(
                 scan_id=scan_id(t),
             )
         rows = sort_rows(rows)
+
+        # AI 요약 (R4): 심각도 높은 순으로 최대 N건을 묶음으로 요약한다. 요약 실패 처리(R4-2)는 T9.
+        outcome = summarize_rows(
+            rows, summary_source, settings.summary_max_items, settings.summary_batch_size
+        )
+        rows = outcome.rows
         table, omitted = build_table(rows, settings.table_max_rows)
+        summary_line = outcome.aggregate if outcome.attempted else outcome.skip_message
 
         warnings: list[str] = []
         report_saved = True
         try:
-            save_report(settings.data_dir, project, t, render_report(project, sid, t, rows))
+            save_report(
+                settings.data_dir, project, t, render_report(project, sid, t, rows, summary_line)
+            )
         except StorageError:
             report_saved = False
             warnings.append("보고서 파일 저장 실패")
@@ -150,10 +171,10 @@ def create_app(
             "table_omitted": omitted,
             "warnings": warnings,
             "links": links_for(project, sid, report_saved),
+            "summary": outcome.to_json(),
         }
         if not rows:
             content["message"] = "발견된 취약점 없음"
-            content["summary"] = {"skipped_reason": "요약할 취약점 없음"}
         elif omitted:
             content["message"] = f"외 {omitted}건은 보고서 참조"
         return JSONResponse(status_code=201, content=content)

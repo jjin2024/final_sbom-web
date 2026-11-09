@@ -15,10 +15,10 @@
 | T5 화면 한 장 | 일부 완료 (이력 목록, 다운로드 링크, 이전 실행 대비, 요약 집계는 이후) |
 | T6 조회 실패 처리 (502) | 완료 |
 | T7 이력 조회, 재요청 409, 이전 실행 대비 | 서버 완료 (화면 반영은 이후) |
-| T8 AI 요약 (Gemini) | 미구현 |
+| T8 AI 요약 (Gemini) | 완료 (가짜 응답 기준, 실제 Gemini 호출은 키로 확인 필요) |
 | T9 AI 요약 실패 처리 | 미구현 |
 
-테스트: 137건 통과, 1건 건너뜀(실제 OSV 호출, `OSV_LIVE_TEST=1`). 요구사항, 완료 기준, 변경 기록은 저장소 밖의 개발 문서에 있습니다.
+테스트: 164건 통과, 2건 건너뜀(실제 OSV 호출 `OSV_LIVE_TEST=1`, 실제 Gemini 호출 `GEMINI_LIVE_TEST=1`). 요구사항, 완료 기준, 변경 기록은 저장소 밖의 개발 문서에 있습니다.
 
 ## 실행 (Docker)
 
@@ -57,8 +57,27 @@ curl -F "file=@requirements.txt" http://localhost:8000/api/projects/demo/scans
 | `TABLE_MAX_ROWS` | `15` | 응답용 표의 최대 행 수 |
 | `EXTERNAL_TIMEOUT_SECONDS` | `10` | 외부 API 호출 제한 시간 |
 | `OSV_API_URL` | `https://api.osv.dev` | OSV 주소 (API 키 불필요) |
+| `GEMINI_API_KEY` | (없음) | Gemini API 키. 없으면 서버는 정상 기동하고 요약만 건너뜀 |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | 요약에 쓸 모델 (키로 확인 필요) |
+| `GEMINI_API_URL` | `https://generativelanguage.googleapis.com` | Gemini 주소 |
+| `GEMINI_MAX_OUTPUT_TOKENS` | `2048` | 요약 요청의 최대 출력 토큰 |
+| `SUMMARY_MAX_ITEMS` | `50` | 요약할 최대 취약점 수 (심각도 높은 순) |
+| `SUMMARY_BATCH_SIZE` | `5` | 한 번에 요약 요청하는 항목 수 |
 
-API 키는 코드나 이미지에 넣지 않고 환경 변수로만 전달합니다.
+## API 키 넣는 법
+
+API 키는 코드, 이미지, 로그에 넣지 않고 환경 변수로만 전달합니다. 채팅이나 저장소에 붙여넣지 마세요.
+
+```powershell
+# 현재 터미널에서만 (PowerShell)
+$env:GEMINI_API_KEY = "발급받은키"
+# 값 없이 -e 이름만 쓰면 현재 터미널의 값을 컨테이너로 전달합니다 (명령어 기록에 키가 남지 않음)
+docker run -d --name sbom-web -p 8000:8000 -v sbom-data:/data -e GEMINI_API_KEY sbom-web
+```
+
+- 파일로 관리하려면 저장소 밖에 `gemini.env`(`GEMINI_API_KEY=발급받은키` 한 줄)를 두고 `--env-file gemini.env`로 전달하세요. `.env` 파일은 `.gitignore`와 `.dockerignore`에 들어 있습니다.
+- 실제 Gemini 호출 확인: 키를 설정한 터미널에서 `$env:GEMINI_LIVE_TEST = "1"; .venv\Scripts\python -m pytest -q tests/test_t8.py -k real_gemini`
+- 사용 가능한 모델 목록: `curl.exe -H "x-goog-api-key: $env:GEMINI_API_KEY" https://generativelanguage.googleapis.com/v1beta/models`
 
 ## 개발
 

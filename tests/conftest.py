@@ -33,10 +33,12 @@ def source():
 
 @pytest.fixture
 def make_client(data_dir, source):
-    def _make(vuln_source=None, clock=None, **settings):
+    def _make(vuln_source=None, clock=None, summary_source=None, **settings):
         kwargs = {"vuln_source": vuln_source or source}
         if clock:
             kwargs["clock"] = clock
+        if summary_source is not None:  # 주지 않으면 키가 없는 상태(요약 건너뜀)
+            kwargs["summary_source"] = summary_source
         return TestClient(create_app(Settings(data_dir=data_dir, **settings), **kwargs))
 
     return _make
