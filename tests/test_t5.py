@@ -57,6 +57,24 @@ def test_index_text_is_at_least_12px():
     assert sizes and min(sizes) >= 12
 
 
+def test_index_shows_history_links_comparison_and_summary():
+    text = INDEX.read_text(encoding="utf-8")
+    for name in ["loadHistory", "renderHistory", "comparisonHtml", "summaryHtml", "linksHtml", "safeHref"]:
+        assert f"function {name}(" in text or f"async function {name}(" in text, name
+    assert "'/api/projects/'+encodeURIComponent(name)+'/scans'" in text  # 이력 조회 API
+    for field in ["d.comparison", "d.links", "d.summary"]:  # 점검 응답의 해당 항목을 읽는다
+        assert field in text
+
+
+def test_index_only_links_to_the_documented_download_paths():
+    # 서버가 준 링크는 /api/projects/<이름>/scans/<스캔 ID>/(sbom|report) 형식일 때만 href에 넣는다
+    text = INDEX.read_text(encoding="utf-8")
+    assert r"/^\/api\/projects\/[A-Za-z0-9][A-Za-z0-9._-]{0,49}\/scans\/\d{8}-\d{6}\/(sbom|report)$/" in text
+    assert "javascript:" not in text
+    # href와 aria-label 속성에는 검증을 거친 값(safeHref, safeId)만 들어간다
+    assert text.count('href="\'+h+\'"') == 1 and "esc(aria)" in text
+
+
 def test_index_has_no_external_resources():
     text = INDEX.read_text(encoding="utf-8")
     assert "http://" not in text and "https://" not in text
