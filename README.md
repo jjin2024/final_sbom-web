@@ -15,10 +15,10 @@
 | T5 화면 한 장 | 일부 완료 (이력 목록, 다운로드 링크, 이전 실행 대비, 요약 집계는 이후) |
 | T6 조회 실패 처리 (502) | 완료 |
 | T7 이력 조회, 재요청 409, 이전 실행 대비 | 서버 완료 (화면 반영은 이후) |
-| T8 AI 요약 (Gemini) | 완료 (가짜 응답 기준, 실제 Gemini 호출은 키로 확인 필요) |
+| T8 AI 요약 (Gemini) | 완료 (실제 Gemini 호출 시험 통과, 컨테이너에서 5건 묶음으로 끝까지는 이후 확인) |
 | T9 AI 요약 실패 처리 | 미구현 |
 
-테스트: 164건 통과, 2건 건너뜀(실제 OSV 호출 `OSV_LIVE_TEST=1`, 실제 Gemini 호출 `GEMINI_LIVE_TEST=1`). 요구사항, 완료 기준, 변경 기록은 저장소 밖의 개발 문서에 있습니다.
+테스트: 169건 통과, 2건 건너뜀(실제 OSV 호출 `OSV_LIVE_TEST=1`, 실제 Gemini 호출 `GEMINI_LIVE_TEST=1`). 요구사항, 완료 기준, 변경 기록은 저장소 밖의 개발 문서에 있습니다.
 
 ## 실행 (Docker)
 
@@ -60,6 +60,7 @@ curl -F "file=@requirements.txt" http://localhost:8000/api/projects/demo/scans
 | `GEMINI_API_KEY` | (없음) | Gemini API 키. 없으면 서버는 정상 기동하고 요약만 건너뜀 |
 | `GEMINI_MODEL` | `gemini-3.5-flash` | 요약에 쓸 모델. 모델은 시간이 지나면 종료되므로 404가 나오면 아래 목록 명령으로 확인 |
 | `GEMINI_TIMEOUT_SECONDS` | `60` | Gemini 호출 제한 시간 (OSV의 `EXTERNAL_TIMEOUT_SECONDS`와 따로) |
+| `GEMINI_THINKING_LEVEL` | `low` | 모델의 생각 수준. 낮을수록 빠르다. 이 설정을 지원하지 않는 모델이면 빈 값으로 끔 |
 | `GEMINI_API_URL` | `https://generativelanguage.googleapis.com` | Gemini 주소 |
 | `GEMINI_MAX_OUTPUT_TOKENS` | `2048` | 요약 요청의 최대 출력 토큰 |
 | `SUMMARY_MAX_ITEMS` | `50` | 요약할 최대 취약점 수 (심각도 높은 순) |

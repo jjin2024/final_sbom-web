@@ -15,6 +15,8 @@ DEFAULT_GEMINI_URL = "https://generativelanguage.googleapis.com"
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
 DEFAULT_GEMINI_MAX_OUTPUT_TOKENS = 2048
 DEFAULT_GEMINI_TIMEOUT = 60.0  # LLM 응답은 OSV보다 느려서 외부 호출 제한 시간(10초)과 따로 둔다
+# 생각(thinking) 수준. 비우면 설정을 보내지 않는다(지원하지 않는 모델용).
+DEFAULT_GEMINI_THINKING_LEVEL = "low"
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,7 @@ class Settings:
     gemini_model: str = DEFAULT_GEMINI_MODEL
     gemini_max_output_tokens: int = DEFAULT_GEMINI_MAX_OUTPUT_TOKENS
     gemini_timeout: float = DEFAULT_GEMINI_TIMEOUT
+    gemini_thinking_level: str = DEFAULT_GEMINI_THINKING_LEVEL
     # repr=False: 설정을 출력하거나 로그에 남겨도 키가 보이지 않게 한다
     gemini_api_key: str = field(default="", repr=False)
 
@@ -50,5 +53,6 @@ class Settings:
                 env("GEMINI_MAX_OUTPUT_TOKENS", DEFAULT_GEMINI_MAX_OUTPUT_TOKENS)
             ),
             gemini_timeout=float(env("GEMINI_TIMEOUT_SECONDS", DEFAULT_GEMINI_TIMEOUT)),
+            gemini_thinking_level=env("GEMINI_THINKING_LEVEL", DEFAULT_GEMINI_THINKING_LEVEL).strip(),
             gemini_api_key=(env("GEMINI_API_KEY") or "").strip(),
         )

@@ -281,7 +281,8 @@ def test_gemini_source_network_failures_become_summary_failed(exc):
 )
 def test_real_gemini_returns_a_summary_for_each_item():
     s = Settings.from_env()
-    src = GeminiSource(s.gemini_api_key, s.gemini_url, s.gemini_model, s.gemini_timeout, s.gemini_max_output_tokens)
+    src = GeminiSource(s.gemini_api_key, s.gemini_url, s.gemini_model, s.gemini_timeout,
+                       s.gemini_max_output_tokens, s.gemini_thinking_level)
     out = src.summarize([SummaryItem("flask", "3.0.0", "CVE-2026-27205"),
                          SummaryItem("requests", "2.31.0", "CVE-2024-35195")])
     assert len(out) == 2 and all(isinstance(t, str) and len(t) > 10 for t in out)
@@ -296,6 +297,25 @@ def test_http_error_keeps_only_the_status_code_for_diagnosis():
     with pytest.raises(SummaryFailed) as info:
         make_gemini(opener).summarize([SummaryItem("a", "1", "X-1")])
     assert str(info.value) == "HTTP 404"  # 키, 주소, 응답 본문은 메시지에 없다
+
+
+def test_thinking_level_is_sent_only_when_set():
+    on, off = FakeHttp(), FakeHttp()
+    item = [SummaryItem("a", "1", "X-1")]
+    GeminiSource("k", "https://g.example", "m", 5, 100, "low", opener=on).summarize(item)
+    GeminiSource("k", "https://g.example", "m", 5, 100, "", opener=off).summarize(item)
+    assert on.requests[0]["body"]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "low"}
+    assert "thinkingConfig" not in off.requests[0]["body"]["generationConfig"]  # 지원하지 않는 모델용
+
+
+def test_thinking_level_setting_default_and_env(monkeypatch, data_dir):
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+    monkeypatch.delenv("GEMINI_THINKING_LEVEL", raising=False)
+    assert Settings.from_env().gemini_thinking_level == "low"
+    monkeypatch.setenv("GEMINI_THINKING_LEVEL", "")
+    assert Settings.from_env().gemini_thinking_level == ""  # 빈 값이면 끔
+    monkeypatch.setenv("GEMINI_THINKING_LEVEL", " minimal ")
+    assert Settings.from_env().gemini_thinking_level == "minimal"
 
 
 def test_model_name_from_the_model_list_works_as_is():

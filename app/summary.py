@@ -71,13 +71,16 @@ class GeminiSource:
         model: str,
         timeout: float,
         max_output_tokens: int,
+        thinking_level: str = "",
         opener: Callable[..., object] = urllib.request.urlopen,
     ):
+        # thinking_level이 비어 있으면 thinkingConfig를 보내지 않는다(지원하지 않는 모델용)
         self._key = api_key
         model = model.strip().removeprefix("models/")  # 모델 목록의 이름(models/...)을 그대로 써도 된다
         self._url = f"{base_url.rstrip('/')}/v1beta/models/{model}:generateContent"
         self._timeout = timeout
         self._max_tokens = max_output_tokens
+        self._thinking = thinking_level.strip()
         self._opener = opener
 
     def summarize(self, items: list[SummaryItem]) -> list[str]:
@@ -96,6 +99,10 @@ class GeminiSource:
                 "responseSchema": _SCHEMA,
             },
         }
+        if self._thinking:
+            # 요약에는 깊은 추론이 필요 없다. 생각 토큰은 응답 시간과 maxOutputTokens 한도를 쓴다
+            # (실제 호출: 생각 1,400여 토큰, 약 10초 -> 줄이면 2~4초)
+            body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": self._thinking}
         data = self._post(body)
         try:
             candidate = data["candidates"][0]
