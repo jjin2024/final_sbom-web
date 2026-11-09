@@ -105,3 +105,10 @@ def test_index_lists_the_supported_file_names_and_does_not_block_them():
     accept = text.split('id="package-file" type="file" accept="')[1].split('"')[0]
     for extension in [".txt", ".json", ".mod", ".lock"]:  # 위 파일 이름의 확장자
         assert extension in accept.split(","), extension
+
+
+def test_index_skipped_notice_says_lines_or_entries():
+    # 잠금 파일(package-lock.json 등)에서는 건너뛴 것이 줄이 아니라 항목이라서 둘 다 말한다
+    text = INDEX.read_text(encoding="utf-8")
+    assert "line(s) or entries could not be parsed and were skipped." in text
+    assert " lines could not be parsed." not in text
