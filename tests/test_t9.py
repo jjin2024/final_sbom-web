@@ -37,7 +37,7 @@ def test_case37_middle_batch_fails_others_kept(make_client, data_dir):
     assert all(x["summary"].startswith("요약:") for x in table if x["summary_status"] == "요약됨")
     assert all(x["summary"] == "" for x in table if x["summary_status"] == "요약 실패")
     assert body["summary"] == {"succeeded": 7, "failed": 5, "excluded": 0,
-                               "text": "요약 7건 성공, 5건 실패, 0건 제외"}
+                               "text": "요약 7건 성공, 5건 실패, 0건 제외", "calls": 3, "reused": 0}
     assert len(table) == 12 and body["vulnerabilities_total"] == 12  # 표에 12건 모두
     text = report(data_dir, body)
     assert all(f"TEST-{i:04d}" in text for i in range(1, 13))  # 보고서에도 12건 모두

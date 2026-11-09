@@ -34,7 +34,7 @@ def test_case31_all_summarized_and_only_allowed_fields_are_sent(make_client, dat
     assert statuses(body) == {"TEST-0001": "요약됨", "TEST-0002": "요약됨", "TEST-0003": "요약됨"}
     assert body["table"][0]["summary"] == "요약:TEST-0001"
     assert body["summary"] == {"succeeded": 3, "failed": 0, "excluded": 0,
-                               "text": "요약 3건 성공, 0건 실패, 0건 제외"}
+                               "text": "요약 3건 성공, 0건 실패, 0건 제외", "calls": 1, "reused": 0}
     # 요약기가 받는 것은 패키지명, 버전, 취약점 ID뿐이다 (프로젝트 이름, 파일 이름·내용은 전달 경로가 없음)
     assert [(i.package, i.version, i.vuln_id) for i in gem.calls[0]] == [
         ("flask", "3.0.0", "TEST-0001"), ("requests", "2.31.0", "TEST-0002"),
@@ -127,7 +127,8 @@ def test_case35_unknown_severity_order_and_limit(make_client):
     results = []
     for _ in range(2):  # 같은 입력으로 다시 요청해도 같은 결과
         gem = FakeSummary()
-        body = upload(make_client(FakeSource(responses), summary_source=gem, summary_max_items=2),
+        body = upload(make_client(FakeSource(responses), summary_source=gem, summary_max_items=2,
+                                       summary_cache_ttl_days=0),  # 캐시를 쓰면 두 번째는 재사용되므로 끔
                       content=b"flask==3.0.0\n").json()
         results.append([(t["vuln_id"], t["severity"], t["summary_status"]) for t in body["table"]])
         import time
