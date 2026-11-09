@@ -71,6 +71,28 @@ def test_real_osv_source_timeout_becomes_502(data_dir):
     assert r.status_code == 502 and "조회 실패, 목록은 저장됨" in r.json()["error"]
 
 
+def test_osv_response_cut_off_midway_is_a_502_not_a_server_error(data_dir):
+    import http.client
+    import io
+
+    class Cut(io.BytesIO):
+        def read(self, *a):
+            raise http.client.IncompleteRead(b"par")  # 응답이 중간에 잘림
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    c = TestClient(create_app(
+        Settings(data_dir=data_dir),
+        vuln_source=OsvSource("https://osv.example", 1, opener=lambda req, timeout: Cut()),
+    ))
+    r = upload(c, content=FILE_A)
+    assert r.status_code == 502 and "조회 실패, 목록은 저장됨" in r.json()["error"]
+
+
 def test_next_request_after_failure_works_normally(make_client, data_dir):
     failing = FakeSource(fail=True)
     assert upload(make_client(failing), content=FILE_A).status_code == 502

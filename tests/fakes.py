@@ -5,11 +5,15 @@ from app.osv import Finding, LookupFailed
 class FakeSummary:
     """테스트용 가짜 Gemini. 어떤 요청(묶음)이 몇 번 갔는지 기록한다."""
 
-    def __init__(self):
+    def __init__(self, fail_calls=()):
         self.calls: list[list] = []  # 호출마다 SummaryItem 목록
+        self.fail_calls = set(fail_calls)  # 실패시킬 호출 번호(1부터)
 
     def summarize(self, items):
+        from app.summary import SummaryFailed
         self.calls.append(list(items))
+        if len(self.calls) in self.fail_calls:
+            raise SummaryFailed("HTTP 500")
         return [f"요약:{i.vuln_id}" for i in items]
 
 

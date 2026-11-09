@@ -1,4 +1,5 @@
 """취약점 조회 (R3). OSV를 부르는 부분을 `VulnSource` 뒤로 분리해 테스트에서 바꿔 끼운다 (3.1, 4.1)."""
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -121,8 +122,8 @@ class OsvSource:
         try:
             with self._opener(req, timeout=self._timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
-            # 원인(주소, 응답 내용)은 호출한 쪽으로 넘기지 않는다
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError, http.client.HTTPException) as e:
+            # 시간 초과, 연결 끊김, 응답이 중간에 잘림(IncompleteRead) 등. 원인(주소, 응답 내용)은 넘기지 않는다
             raise LookupFailed(type(e).__name__) from e
         if not isinstance(data, dict):
             raise LookupFailed("OSV 응답 형식 오류")

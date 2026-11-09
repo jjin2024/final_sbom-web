@@ -4,13 +4,17 @@
 - LLM에 보내는 정보는 패키지명, 버전, 취약점 ID뿐이다. 파일 내용·이름과 프로젝트 이름은 보내지 않는다.
 - API 키는 요청 헤더로만 보내고, 주소와 응답, 예외 메시지, 로그에 넣지 않는다.
 """
+import http.client
 import json
+import logging
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, replace
 from typing import Callable, Protocol
 
 from .report import VulnRow
+
+log = logging.getLogger("sbom.summary")
 
 STATUS_OK = "요약됨"
 STATUS_FAILED = "요약 실패"
@@ -133,8 +137,8 @@ class GeminiSource:
         except urllib.error.HTTPError as e:
             # 진단용으로 상태 코드(숫자)만 남긴다. 주소, 헤더(키), 응답 본문은 넣지 않는다
             raise SummaryFailed(f"HTTP {e.code}") from None
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
-            # 원인(주소, 응답 내용)은 호출한 쪽으로 넘기지 않는다
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError, http.client.HTTPException) as e:
+            # 시간 초과, 연결 끊김, 응답이 중간에 잘림(IncompleteRead) 등. 원인(주소, 응답 내용)은 넘기지 않는다
             raise SummaryFailed(type(e).__name__) from None
         if not isinstance(data, dict):
             raise SummaryFailed("bad response")
@@ -187,9 +191,21 @@ def summarize_rows(
 
     targets, rest = rows[:max_items], rows[max_items:]
     done: list[VulnRow] = []
+    succeeded = failed = 0
     for start in range(0, len(targets), batch_size):
         batch = targets[start:start + batch_size]
-        texts = source.summarize([SummaryItem(r.package, r.version, r.vuln_id) for r in batch])
+        # 묶음마다 성공과 실패를 따로 판정한다 (R4-2). 실패해도 이후 묶음은 계속 시도한다.
+        try:
+            texts = source.summarize([SummaryItem(r.package, r.version, r.vuln_id) for r in batch])
+            if len(texts) != len(batch):
+                raise SummaryFailed("items mismatch")
+        except SummaryFailed as e:
+            # 원인은 서버 로그에만 남긴다(키, 주소, 응답 내용은 없는 짧은 메시지). 응답과 화면에는 넣지 않는다
+            log.warning("요약 묶음 실패 (%d건): %s", len(batch), e)
+            done += [replace(r, summary_status=STATUS_FAILED) for r in batch]
+            failed += len(batch)
+            continue
         done += [replace(r, summary_status=STATUS_OK, summary=t) for r, t in zip(batch, texts)]
+        succeeded += len(batch)
     excluded = [replace(r, summary_status=STATUS_EXCLUDED) for r in rest]
-    return SummaryOutcome(done + excluded, succeeded=len(done), excluded=len(excluded))
+    return SummaryOutcome(done + excluded, succeeded=succeeded, failed=failed, excluded=len(excluded))

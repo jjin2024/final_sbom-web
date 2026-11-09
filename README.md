@@ -18,7 +18,7 @@
 | T8 AI 요약 (Gemini) | 완료 (실제 Gemini 호출 시험 통과, 컨테이너에서 5건 묶음으로 끝까지는 이후 확인) |
 | T9 AI 요약 실패 처리 | 미구현 |
 
-테스트: 169건 통과, 2건 건너뜀(실제 OSV 호출 `OSV_LIVE_TEST=1`, 실제 Gemini 호출 `GEMINI_LIVE_TEST=1`). 요구사항, 완료 기준, 변경 기록은 저장소 밖의 개발 문서에 있습니다.
+테스트: 189건 통과, 3건 건너뜀(실제 OSV 호출 `OSV_LIVE_TEST=1`, 실제 Gemini 호출 `GEMINI_LIVE_TEST=1`). 요구사항, 완료 기준, 변경 기록은 저장소 밖의 개발 문서에 있습니다.
 
 ## 실행 (Docker)
 
@@ -65,6 +65,8 @@ curl -F "file=@requirements.txt" http://localhost:8000/api/projects/demo/scans
 | `GEMINI_MAX_OUTPUT_TOKENS` | `2048` | 요약 요청의 최대 출력 토큰 |
 | `SUMMARY_MAX_ITEMS` | `50` | 요약할 최대 취약점 수 (심각도 높은 순) |
 | `SUMMARY_BATCH_SIZE` | `5` | 한 번에 요약 요청하는 항목 수 |
+
+요약이 일부 "요약 실패"로 나오면 서버 로그에서 원인을 확인하세요 (`docker logs sbom-web`, 예: `요약 묶음 실패 (5건): HTTP 429`는 사용 한도 초과). 무료 키는 분당 요청 한도가 작아서 취약점이 많으면 뒤쪽 묶음이 실패할 수 있고, `SUMMARY_MAX_ITEMS`를 줄이면 호출 수가 줄어듭니다.
 
 ## API 키 넣는 법
 
