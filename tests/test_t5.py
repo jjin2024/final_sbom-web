@@ -67,9 +67,9 @@ def test_index_shows_history_links_comparison_and_summary():
 
 
 def test_index_only_links_to_the_documented_download_paths():
-    # 서버가 준 링크는 /api/projects/<이름>/scans/<스캔 ID>/(sbom|report) 형식일 때만 href에 넣는다
+    # 서버가 준 링크는 /api/projects/<이름>/scans/<스캔 ID>/(sbom|report|cyclonedx) 형식일 때만 href에 넣는다
     text = INDEX.read_text(encoding="utf-8")
-    assert r"/^\/api\/projects\/[A-Za-z0-9][A-Za-z0-9._-]{0,49}\/scans\/\d{8}-\d{6}\/(sbom|report)$/" in text
+    assert r"/^\/api\/projects\/[A-Za-z0-9][A-Za-z0-9._-]{0,49}\/scans\/\d{8}-\d{6}\/(sbom|report|cyclonedx)$/" in text
     assert "javascript:" not in text
     # href와 aria-label 속성에는 검증을 거친 값(safeHref, safeId)만 들어간다
     assert text.count('href="\'+h+\'"') == 1 and "esc(aria)" in text
@@ -86,3 +86,11 @@ def test_index_script_has_no_unbalanced_template_literals():
     # 문자열 안에 ${...}를 홑따옴표로 넣어 스크립트가 통째로 깨졌던 사고의 재발 방지
     script = INDEX.read_text(encoding="utf-8").split("<script>")[1].split("</script>")[0]
     assert "${'" not in script
+
+
+def test_index_shows_cyclonedx_links_only_when_the_server_gave_one():
+    # T11: 결과의 다운로드 링크와 이력 항목에 cyclonedx 링크. null이면 그리지 않는다
+    text = INDEX.read_text(encoding="utf-8")
+    assert "function optLinkHtml(" in text
+    assert text.count("optLinkHtml(l.cyclonedx,'cyclonedx','cyclonedx '+id)") == 2  # 결과와 이력
+    assert "safeHref(href)?linkHtml(href,label,aria):''" in text  # 형식 검사를 통과한 값만
