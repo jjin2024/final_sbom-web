@@ -13,7 +13,7 @@ from .compare import compare
 from .cyclonedx import render as render_cyclonedx
 from .config import Settings
 from .osv import LookupFailed, OsvSource, VulnSource
-from .parser import Package, parse_requirements
+from .parser import FormatError, Package, parse_upload
 from .report import VulnRow, build_table, render_report, sort_rows
 from .summary import GeminiSource, SummarySource, summarize_rows
 from .storage import (
@@ -112,7 +112,12 @@ def create_app(
         except UnicodeDecodeError:
             return error(400, "텍스트 파일이 아님: UTF-8로 읽을 수 없음")
 
-        result = parse_requirements(text)
+        # 파일 이름이 package-lock.json, package.json, go.mod, Cargo.lock이면 그 형식으로, 아니면
+        # requirements.txt 형식으로 해석한다. 지원하는 이름인데 내용이 맞지 않으면 400(아무것도 저장하지 않음).
+        try:
+            result = parse_upload(upload.filename, text)
+        except FormatError as e:
+            return error(400, str(e))
         if not result.packages:
             return error(400, "패키지를 찾을 수 없음")
 

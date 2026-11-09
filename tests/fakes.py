@@ -28,7 +28,9 @@ class FakeSource:
         self.calls.append((name, version, ecosystem))
         if self.fail or (name, version) in self.fail_for:
             raise LookupFailed("blocked: secret-host.internal:443")
-        return list(self.responses.get((name, version), []))
+        # (이름, 버전, 생태계)로 먼저 찾고, 없으면 (이름, 버전)으로 찾는다
+        found = self.responses.get((name, version, ecosystem), self.responses.get((name, version), []))
+        return list(found)
 
 
 # 심각도는 심각 > 높음 > 보통 > 낮음
@@ -52,3 +54,21 @@ def many(n: int, package=("flask", "3.0.0")):
     """취약점 n건이 나오는 고정 응답 (사례 28, 33, 36). 심각도는 돌아가며 부여한다."""
     levels = ["낮음", "보통", "높음", "심각"]
     return {package: [Finding(f"TEST-{i:04d}", levels[i % 4]) for i in range(1, n + 1)]}
+
+
+# T12: 생태계별 응답 세트 (키는 (이름, 버전, 생태계))
+SET_NPM = {
+    ("lodash", "4.17.15", "npm"): [Finding("TEST-N001", "높음")],
+    ("express", "4.18.2", "npm"): [],
+    ("@babel/core", "7.23.0", "npm"): [Finding("TEST-N002", "보통")],
+    ("mocha", "10.2.0", "npm"): [],
+}
+SET_GO = {
+    ("github.com/gin-gonic/gin", "v1.9.0", "Go"): [Finding("TEST-G001", "심각")],
+    ("golang.org/x/text", "v0.3.7", "Go"): [Finding("TEST-G002", "높음")],
+    ("github.com/gorilla/mux", "v1.8.0", "Go"): [],
+}
+SET_RUST = {
+    ("serde", "1.0.100", "crates.io"): [Finding("TEST-R001", "낮음")],
+    ("time", "0.1.43", "crates.io"): [Finding("TEST-R002", "높음")],
+}
