@@ -17,7 +17,14 @@ def sbom_lines(data_dir, project="demo"):
 
 
 def entries(lines):
-    return [l for l in lines if not l.startswith("#")]
+    """목록 항목 줄만. 헤더(#)와 끝의 "이전 실행 대비" 구역(##부터)은 뺀다."""
+    out = []
+    for l in lines:
+        if l.startswith("##"):
+            break
+        if not l.startswith("#"):
+            out.append(l)
+    return out
 
 
 def test_case2_filename_not_checked(client, data_dir):
@@ -157,6 +164,8 @@ def test_case12_write_failure_leaves_no_partial_file(client, data_dir, monkeypat
     def boom(src, dst):
         raise OSError("disk full")
 
+    # 목록 파일은 os.link(덮어쓰지 않고 만들기), 지원하지 않는 파일 시스템에서는 os.replace로 저장한다
+    monkeypatch.setattr(storage.os, "link", boom)
     monkeypatch.setattr(storage.os, "replace", boom)
     r = upload(client)
     assert r.status_code == 500 and "저장 실패" in r.json()["error"]

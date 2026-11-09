@@ -14,11 +14,11 @@
 | T4 Docker 실행, volume 유지 | 완료 |
 | T5 화면 한 장 | 일부 완료 (이력 목록, 다운로드 링크, 이전 실행 대비, 요약 집계는 이후) |
 | T6 조회 실패 처리 (502) | 완료 |
-| T7 이력 조회, 재요청, 이전 실행 대비 | 미구현 |
+| T7 이력 조회, 재요청 409, 이전 실행 대비 | 서버 완료 (화면 반영은 이후) |
 | T8 AI 요약 (Gemini) | 미구현 |
 | T9 AI 요약 실패 처리 | 미구현 |
 
-테스트: 102건 통과, 1건 건너뜀(실제 OSV 호출, `OSV_LIVE_TEST=1`). 요구사항, 완료 기준, 변경 기록은 저장소 밖의 개발 문서에 있습니다.
+테스트: 137건 통과, 1건 건너뜀(실제 OSV 호출, `OSV_LIVE_TEST=1`). 요구사항, 완료 기준, 변경 기록은 저장소 밖의 개발 문서에 있습니다.
 
 ## 실행 (Docker)
 
@@ -40,7 +40,10 @@ curl -F "file=@requirements.txt" http://localhost:8000/api/projects/demo/scans
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| POST | `/api/projects/{project}/scans` | 파일(필드 `file`)을 올려 수집, 저장, 조회 |
+| POST | `/api/projects/{project}/scans` | 파일(필드 `file`)을 올려 수집, 저장, 조회. 201, 이전 실행 대비(`comparison`)와 내려받기 경로(`links`) 포함. 같은 초에 같은 프로젝트로 다시 요청하면 409, 조회 실패는 502 |
+| GET | `/api/projects/{project}/scans` | 프로젝트의 이력(최신순). 이력이 없으면 빈 목록 |
+| GET | `/api/projects/{project}/scans/{scan_id}/sbom` | 목록 파일 내려받기 (없으면 404) |
+| GET | `/api/projects/{project}/scans/{scan_id}/report` | 보고서 내려받기 (조회 실패한 스캔은 없어서 404) |
 | GET | `/healthz` | 기동 확인 |
 
 프로젝트 이름은 영문, 숫자, `.`, `_`, `-`만 쓰고 영문 또는 숫자로 시작하는 1~50자입니다.

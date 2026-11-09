@@ -5,18 +5,35 @@ from typing import Callable
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from starlette.datastructures import UploadFile
 
-from .clock import now_kst, scan_id
+from .clock import display_scan_time, now_kst, scan_id
+from .compare import compare
 from .config import Settings
 from .osv import LookupFailed, OsvSource, VulnSource
 from .parser import Package, parse_requirements
 from .report import VulnRow, build_table, render_report, sort_rows
-from .storage import StorageError, save_report, save_sbom
+from .storage import (
+    ScanExists,
+    StorageError,
+    list_scans,
+    previous_scan_id,
+    save_report,
+    save_sbom,
+    scan_file,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 PROJECT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$")
+NAME_RULE_MESSAGE = (
+    "프로젝트 이름 규칙 위반: 영문, 숫자, '.', '_', '-'만 쓰고 영문 또는 숫자로 시작하는 1~50자"
+)
+
+
+def links_for(project: str, sid: str, has_report: bool) -> dict:
+    base = f"/api/projects/{project}/scans/{sid}"
+    return {"sbom": f"{base}/sbom", "report": f"{base}/report" if has_report else None}
 
 
 def error(status: int, message: str, **extra) -> JSONResponse:
@@ -61,11 +78,7 @@ def create_app(
     async def create_scan(project: str, request: Request):
         # 검증 순서: 이름 -> 파일 유무 -> 크기 -> 텍스트 -> 해석. 통과 전에는 아무것도 만들지 않는다.
         if not PROJECT_NAME.fullmatch(project):
-            return error(
-                400,
-                "프로젝트 이름 규칙 위반: 영문, 숫자, '.', '_', '-'만 쓰고 "
-                "영문 또는 숫자로 시작하는 1~50자",
-            )
+            return error(400, NAME_RULE_MESSAGE)
         form = await request.form()
         upload = form.get("file")
         if not isinstance(upload, UploadFile):
@@ -84,8 +97,19 @@ def create_app(
             return error(400, "패키지를 찾을 수 없음")
 
         t = clock()  # 요청 시각은 한 번만 정한다
+        sid = scan_id(t)
+
+        # 이전 실행 대비 (R2-4): 같은 프로젝트에서 이번 요청보다 이른 것 중 가장 늦은 목록과 비교한다.
+        # 직전 파일을 읽을 수 없으면 비교만 건너뛰고 이후 단계는 계속한다.
+        prev_id = previous_scan_id(settings.data_dir, project, sid)
+        prev_path = settings.data_dir / project / f"sbom-{prev_id}.txt" if prev_id else None
+        comparison = compare(prev_id, prev_path, result.packages)
+
         try:
-            save_sbom(settings.data_dir, project, t, result.packages)
+            save_sbom(settings.data_dir, project, t, result.packages, comparison.lines())
+        except ScanExists:
+            # 같은 시각(초)의 스캔이 있음: 기존 파일을 덮어쓰지 않고 이후 단계(조회 등)를 진행하지 않는다 (R2-3)
+            return error(409, "같은 시각의 스캔이 있음: 잠시 후 다시 요청해 주세요")
         except StorageError:
             return error(500, "저장 실패: 결과 파일을 저장할 수 없음")
 
@@ -108,22 +132,24 @@ def create_app(
         table, omitted = build_table(rows, settings.table_max_rows)
 
         warnings: list[str] = []
+        report_saved = True
         try:
-            save_report(
-                settings.data_dir, project, t, render_report(project, scan_id(t), t, rows)
-            )
+            save_report(settings.data_dir, project, t, render_report(project, sid, t, rows))
         except StorageError:
+            report_saved = False
             warnings.append("보고서 파일 저장 실패")
 
         content = {
-            "scan_id": scan_id(t),
+            "scan_id": sid,
             "collected": len(result.packages),
             "skipped_lines": result.skipped_lines,
             "not_looked_up": result.not_looked_up,
+            "comparison": comparison.to_json(),
             "vulnerabilities_total": len(rows),
             "table": table,
             "table_omitted": omitted,
             "warnings": warnings,
+            "links": links_for(project, sid, report_saved),
         }
         if not rows:
             content["message"] = "발견된 취약점 없음"
@@ -131,6 +157,53 @@ def create_app(
         elif omitted:
             content["message"] = f"외 {omitted}건은 보고서 참조"
         return JSONResponse(status_code=201, content=content)
+
+    def download(project: str, sid: str, kind: str):
+        if not PROJECT_NAME.fullmatch(project):
+            return error(400, NAME_RULE_MESSAGE)
+        path = scan_file(settings.data_dir, project, sid, kind)
+        if path is None:
+            what = "목록 파일" if kind == "sbom" else "보고서"
+            return error(404, f"{what}을 찾을 수 없음")
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return error(500, "파일을 읽을 수 없음")
+        return PlainTextResponse(
+            text,
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
+        )
+
+    # 더 구체적인 경로를 먼저 등록한다
+    @app.get("/api/projects/{project:path}/scans/{sid}/sbom")
+    async def get_sbom(project: str, sid: str):
+        return download(project, sid, "sbom")
+
+    @app.get("/api/projects/{project:path}/scans/{sid}/report")
+    async def get_report(project: str, sid: str):
+        return download(project, sid, "report")
+
+    @app.get("/api/projects/{project:path}/scans")
+    async def list_project_scans(project: str):
+        if not PROJECT_NAME.fullmatch(project):
+            return error(400, NAME_RULE_MESSAGE)
+        try:
+            scans = list_scans(settings.data_dir, project)
+        except StorageError:
+            return error(500, "이력을 읽을 수 없음")
+        return {  # 이력이 없는 프로젝트는 빈 목록(200)
+            "project": project,
+            "scans": [
+                {
+                    "scan_id": s.scan_id,
+                    "time": display_scan_time(s.scan_id),
+                    "has_report": s.has_report,
+                    "links": links_for(project, s.scan_id, s.has_report),
+                }
+                for s in scans
+            ],
+        }
 
     return app
 

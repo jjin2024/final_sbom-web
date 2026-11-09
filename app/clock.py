@@ -13,5 +13,10 @@ def scan_id(t: datetime) -> str:
     return t.astimezone(KST).strftime("%Y%m%d-%H%M%S")
 
 
+def display_scan_time(sid: str) -> str:
+    """스캔 ID(YYYYMMDD-HHMMSS, KST)를 화면용 시각으로."""
+    return datetime.strptime(sid, "%Y%m%d-%H%M%S").strftime("%Y-%m-%d %H:%M:%S") + " KST"
+
+
 def display_time(t: datetime) -> str:
     return t.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S") + " KST"
