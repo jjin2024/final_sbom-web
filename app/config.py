@@ -10,6 +10,7 @@ DEFAULT_EXTERNAL_TIMEOUT = 10.0
 DEFAULT_OSV_URL = "https://api.osv.dev"
 DEFAULT_SUMMARY_MAX_ITEMS = 50
 DEFAULT_SUMMARY_BATCH_SIZE = 5
+DEFAULT_SUMMARY_CACHE_TTL_DAYS = 30  # 요약 재사용 기간(일). 0이면 캐시를 쓰지 않는다
 DEFAULT_GEMINI_URL = "https://generativelanguage.googleapis.com"
 # 모델 이름은 시간이 지나면 종료된다(gemini-2.5-flash는 신규 사용자에게 404). 환경 변수 GEMINI_MODEL로 바꾼다.
 # gemini-3.5-flash는 2026-11-09에 실제 호출로 확인했다(HTTP 200, finishReason STOP, 약 3.7초).
@@ -30,6 +31,7 @@ class Settings:
     lookup_workers: int = DEFAULT_LOOKUP_WORKERS
     summary_max_items: int = DEFAULT_SUMMARY_MAX_ITEMS
     summary_batch_size: int = DEFAULT_SUMMARY_BATCH_SIZE
+    summary_cache_ttl_days: int = DEFAULT_SUMMARY_CACHE_TTL_DAYS
     gemini_url: str = DEFAULT_GEMINI_URL
     gemini_model: str = DEFAULT_GEMINI_MODEL
     gemini_max_output_tokens: int = DEFAULT_GEMINI_MAX_OUTPUT_TOKENS
@@ -50,6 +52,7 @@ class Settings:
             lookup_workers=int(env("LOOKUP_WORKERS", DEFAULT_LOOKUP_WORKERS)),
             summary_max_items=int(env("SUMMARY_MAX_ITEMS", DEFAULT_SUMMARY_MAX_ITEMS)),
             summary_batch_size=int(env("SUMMARY_BATCH_SIZE", DEFAULT_SUMMARY_BATCH_SIZE)),
+            summary_cache_ttl_days=int(env("SUMMARY_CACHE_TTL_DAYS", DEFAULT_SUMMARY_CACHE_TTL_DAYS)),
             gemini_url=env("GEMINI_API_URL", DEFAULT_GEMINI_URL),
             gemini_model=env("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
             gemini_max_output_tokens=int(
