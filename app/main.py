@@ -164,8 +164,8 @@ def create_app(
                 scan_id=scan_id(t),
             )
         rows = sort_rows([
-            VulnRow(name, version, f.vuln_id, f.severity)
-            for (name, version, _eco), findings in zip(targets, found)
+            VulnRow(name, version, f.vuln_id, f.severity, ecosystem=eco)
+            for (name, version, eco), findings in zip(targets, found)
             for f in findings
         ])
 

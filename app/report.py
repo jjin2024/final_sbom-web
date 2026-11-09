@@ -14,6 +14,7 @@ class VulnRow:
     severity: str | None
     summary_status: str = ""
     summary: str = ""
+    ecosystem: str = ""  # 응답용 표와 화면에만 쓴다(보고서 파일 형식은 그대로)
 
 
 def sort_rows(rows: list[VulnRow]) -> list[VulnRow]:
@@ -29,6 +30,7 @@ def table_row(r: VulnRow) -> dict:
     return {
         "package": r.package,
         "version": r.version,
+        "ecosystem": r.ecosystem,
         "vuln_id": r.vuln_id,
         "severity": r.severity or UNKNOWN,
         "summary_status": r.summary_status,

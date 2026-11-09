@@ -469,3 +469,26 @@ def test_case72_go_mod_counts_only_unreadable_lines(make_client, data_dir):
     assert r.status_code == 201 and body["collected"] == 2
     assert body["skipped_lines"] == 2  # 버전 없는 require 항목, 알 수 없는 지시어. module, go, replace는 세지 않음
     assert sorted(src.calls) == [("github.com/gin-gonic/gin", "v1.9.0", "Go"), ("golang.org/x/text", "v0.3.7", "Go")]
+
+
+# ---- 사례 73: 응답 표와 화면의 생태계 표시 (C21) ----
+
+from app.osv import Finding  # noqa: E402
+
+
+def test_case73_table_rows_carry_the_ecosystem_but_the_report_file_is_unchanged(make_client, data_dir):
+    src = FakeSource({("left-pad", "1.0.0", "npm"): [Finding("TEST-X1", "높음")],
+                      ("left-pad", "1.0.0", "PyPI"): [Finding("TEST-X2", "높음")]})
+    c = make_client(src)
+    body = send(c, "package.json", b'{"dependencies": {"left-pad": "1.0.0"}}').json()
+    assert [(r["package"], r["ecosystem"]) for r in body["table"]] == [("left-pad", "npm")]
+    other = send(c, "requirements.txt", b"left-pad==1.0.0\n", project="other").json()
+    assert [(r["package"], r["ecosystem"], r["vuln_id"]) for r in other["table"]] == [("left-pad", "PyPI", "TEST-X2")]
+    report = next((data_dir / "demo").glob("vuln-report-*.txt")).read_text(encoding="utf-8")
+    assert "TEST-X1 left-pad 1.0.0" in report and "npm" not in report  # 보고서 항목 줄 형식은 그대로
+
+
+def test_case73_screen_table_has_an_ecosystem_column_with_a_mobile_label():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parent.parent / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "<th>ecosystem</th>" in html and 'data-label="ecosystem"' in html and "esc(row.ecosystem)" in html

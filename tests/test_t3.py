@@ -50,7 +50,7 @@ def test_case26_table_order_columns_and_report_name(make_client, data_dir):
     body = r.json()
     assert [x["vuln_id"] for x in body["table"]] == ["TEST-0001", "TEST-0002", "TEST-0003"]
     assert set(body["table"][0]) == {
-        "package", "version", "vuln_id", "severity", "summary_status", "summary"
+        "package", "version", "ecosystem", "vuln_id", "severity", "summary_status", "summary"
     }
     sbom = files_in(data_dir, "sbom")
     report = files_in(data_dir, "vuln-report")

@@ -31,7 +31,7 @@ def test_index_escapes_server_strings_before_inserting_html():
     text = INDEX.read_text(encoding="utf-8")
     assert re.search(r"function esc\(v\)\{const e=document\.createElement\('span'\);e\.textContent=", text)
     for field in ["scan_id", "collected", "skipped_lines", "not_looked_up",
-                  "vulnerabilities_total", "package", "version", "vuln_id", "severity",
+                  "vulnerabilities_total", "package", "version", "ecosystem", "vuln_id", "severity",
                   "summary_status", "summary"]:
         assert re.search(rf"esc\((data|row)\.{field}\)", text), f"{field}가 esc() 없이 쓰이는지 확인 필요"
 
