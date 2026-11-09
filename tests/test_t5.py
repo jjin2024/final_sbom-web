@@ -36,6 +36,27 @@ def test_index_escapes_server_strings_before_inserting_html():
         assert re.search(rf"esc\((data|row)\.{field}\)", text), f"{field}가 esc() 없이 쓰이는지 확인 필요"
 
 
+def test_index_inputs_have_connected_labels():
+    text = INDEX.read_text(encoding="utf-8")
+    for field in ["project-name", "package-file"]:
+        assert f'id="{field}"' in text
+        assert f'<label class="label" for="{field}">' in text
+
+
+def test_index_has_no_demo_hook_and_no_fake_shortcuts():
+    # 가짜 취약점 데이터를 보여 주는 ?demo= 매개변수와 동작하지 않는 단축키 안내는 두지 않는다
+    text = INDEX.read_text(encoding="utf-8")
+    assert "demo" not in text.lower()
+    assert "F1" not in text and "ESC:" not in text
+
+
+def test_index_text_is_at_least_12px():
+    import re as _re
+    style = INDEX.read_text(encoding="utf-8").split("<style>")[1].split("</style>")[0]
+    sizes = [int(n) for n in _re.findall(r"font(?:-size)?:(?:bold )?(\d+)px", style)]
+    assert sizes and min(sizes) >= 12
+
+
 def test_index_has_no_external_resources():
     text = INDEX.read_text(encoding="utf-8")
     assert "http://" not in text and "https://" not in text
