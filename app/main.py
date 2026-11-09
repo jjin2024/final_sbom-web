@@ -10,7 +10,7 @@ from starlette.datastructures import UploadFile
 
 from .clock import now_kst, scan_id
 from .config import Settings
-from .osv import OsvSource, VulnSource
+from .osv import LookupFailed, OsvSource, VulnSource
 from .parser import Package, parse_requirements
 from .report import VulnRow, build_table, render_report, sort_rows
 from .storage import StorageError, save_report, save_sbom
@@ -19,8 +19,8 @@ STATIC_DIR = Path(__file__).parent / "static"
 PROJECT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$")
 
 
-def error(status: int, message: str) -> JSONResponse:
-    return JSONResponse(status_code=status, content={"error": message})
+def error(status: int, message: str, **extra) -> JSONResponse:
+    return JSONResponse(status_code=status, content={"error": message, **extra})
 
 
 def lookup_targets(packages: list[Package]) -> list[tuple[str, str, str]]:
@@ -89,11 +89,21 @@ def create_app(
         except StorageError:
             return error(500, "저장 실패: 결과 파일을 저장할 수 없음")
 
-        # 취약점 조회. 조회 실패 처리(502)는 T6에서 추가한다.
+        # 취약점 조회. 하나라도 실패하면 조회를 중단한다 (R3-3).
+        # 목록 파일은 이미 저장되어 있고, 이 요청의 보고서는 만들지 않으며, 요약 호출도 하지 않는다.
         rows: list[VulnRow] = []
-        for name, version, eco in lookup_targets(result.packages):
-            for f in vuln_source.query(name, version, eco):
-                rows.append(VulnRow(name, version, f.vuln_id, f.severity))
+        try:
+            for name, version, eco in lookup_targets(result.packages):
+                for f in vuln_source.query(name, version, eco):
+                    rows.append(VulnRow(name, version, f.vuln_id, f.severity))
+        except LookupFailed:
+            # 실패 원인(주소, 응답 내용)은 응답에 넣지 않는다
+            return error(
+                502,
+                "조회 실패, 목록은 저장됨: 취약점 DB(OSV)를 조회하지 못했습니다. "
+                "잠시 후 다시 시도해 주세요.",
+                scan_id=scan_id(t),
+            )
         rows = sort_rows(rows)
         table, omitted = build_table(rows, settings.table_max_rows)
 

@@ -3,15 +3,16 @@ from app.osv import Finding, LookupFailed
 
 
 class FakeSource:
-    def __init__(self, responses=None, fail=False):
+    def __init__(self, responses=None, fail=False, fail_for=()):
         self.responses = responses or {}
-        self.fail = fail
+        self.fail = fail  # 모든 조회 실패 (연결 차단)
+        self.fail_for = set(fail_for)  # 이 (이름, 버전)만 실패
         self.calls: list[tuple[str, str, str]] = []
 
     def query(self, name, version, ecosystem):
         self.calls.append((name, version, ecosystem))
-        if self.fail:
-            raise LookupFailed("blocked")
+        if self.fail or (name, version) in self.fail_for:
+            raise LookupFailed("blocked: secret-host.internal:443")
         return list(self.responses.get((name, version), []))
 
 
