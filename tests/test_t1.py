@@ -17,13 +17,14 @@ def test_case1_upload_A_saves_list(client, data_dir):
     assert re.fullmatch(r"\d{8}-\d{6}", body["scan_id"])
     assert body["collected"] == 2
 
-    # 같은 시각의 목록 1개 + 보고서 1개 (사례 1, 보고서는 T3부터)
+    # 같은 시각의 목록 1개 + 보고서 1개 (사례 1, 보고서는 T3부터) + CycloneDX 1개 (T11부터)
     files = sorted((data_dir / "demo").iterdir())
     assert [f.name for f in files] == [
+        f"sbom-{body['scan_id']}.cdx.json",
         f"sbom-{body['scan_id']}.txt",
         f"vuln-report-{body['scan_id']}.txt",
     ]
-    lines = files[0].read_text(encoding="utf-8").splitlines()
+    lines = (data_dir / "demo" / f"sbom-{body['scan_id']}.txt").read_text(encoding="utf-8").splitlines()
     assert "flask 3.0.0 PyPI" in lines
     assert "requests 2.31.0 PyPI" in lines
     # 업로드한 원본은 /data에 저장되지 않음

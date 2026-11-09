@@ -32,6 +32,7 @@ class UnreadableSbom(Exception):
 class ScanInfo:
     scan_id: str
     has_report: bool
+    has_cyclonedx: bool = False
 
 
 def render_sbom(
@@ -110,6 +111,11 @@ def save_report(data_dir: Path, project: str, t: datetime, content: str) -> Path
     return _write_atomic(data_dir / project, f"vuln-report-{scan_id(t)}.txt", content)
 
 
+def save_cyclonedx(data_dir: Path, project: str, t: datetime, content: str) -> Path:
+    """CycloneDX 파일은 같은 요청의 목록 파일(`sbom-<시각>.txt`)과 같은 스캔 ID를 쓴다. 목록 파일을 먼저 저장한 뒤에 호출한다."""
+    return _write_atomic(data_dir / project, f"sbom-{scan_id(t)}.cdx.json", content)
+
+
 def list_scans(data_dir: Path, project: str) -> list[ScanInfo]:
     """프로젝트의 스캔을 최신순으로. 폴더가 없으면 빈 목록."""
     try:
@@ -119,7 +125,10 @@ def list_scans(data_dir: Path, project: str) -> list[ScanInfo]:
     except OSError as e:
         raise StorageError(str(e)) from e
     ids = sorted((m.group(1) for n in names if (m := SBOM_FILE.match(n))), reverse=True)
-    return [ScanInfo(i, f"vuln-report-{i}.txt" in names) for i in ids]
+    # 스캔은 정확히 `sbom-<시각>.txt`로만 찾는다. `sbom-<시각>.cdx.json`은 같은 스캔의 부속 파일이라 스캔으로 세지 않는다.
+    return [
+        ScanInfo(i, f"vuln-report-{i}.txt" in names, f"sbom-{i}.cdx.json" in names) for i in ids
+    ]
 
 
 def previous_scan_id(data_dir: Path, project: str, current_id: str) -> str | None:
@@ -160,6 +169,10 @@ def scan_file(data_dir: Path, project: str, sid: str, kind: str) -> Path | None:
     """내려받기용 파일 경로. 스캔 ID 형식이 아니거나 파일이 없으면 None (R2-2)."""
     if not SCAN_ID.fullmatch(sid):
         return None  # 경로를 바꾸는 문자를 파일 이름에 쓰지 않는다
-    prefix = {"sbom": "sbom", "report": "vuln-report"}[kind]
-    path = data_dir / project / f"{prefix}-{sid}.txt"
+    filename = {
+        "sbom": f"sbom-{sid}.txt",
+        "report": f"vuln-report-{sid}.txt",
+        "cyclonedx": f"sbom-{sid}.cdx.json",
+    }[kind]
+    path = data_dir / project / filename
     return path if path.is_file() else None

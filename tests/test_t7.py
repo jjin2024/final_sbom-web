@@ -48,6 +48,7 @@ def test_case13_history_is_newest_first(make_client, client):
     assert body["scans"][0]["links"] == {
         "sbom": "/api/projects/demo/scans/20261105-143005/sbom",
         "report": "/api/projects/demo/scans/20261105-143005/report",
+        "cyclonedx": "/api/projects/demo/scans/20261105-143005/cyclonedx",  # T11부터
     }
     assert body["scans"][1]["links"]["report"] is None
 

@@ -7,7 +7,11 @@
 import re
 from dataclasses import dataclass
 
-ECOSYSTEM = "PyPI"
+ECO_PYPI = "PyPI"
+ECO_NPM = "npm"
+ECO_GO = "Go"
+ECO_CRATES = "crates.io"
+ECOSYSTEM = ECO_PYPI  # requirements.txt 형식의 생태계(기존 이름 유지)
 
 _LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(.*)$")
 _SPEC = re.compile(r"^(===|==|~=|!=|<=|>=|<|>)\s*[A-Za-z0-9.*+!_-]+$")

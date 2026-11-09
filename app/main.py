@@ -5,11 +5,12 @@ from typing import Callable
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.datastructures import UploadFile
 
 from .clock import display_scan_time, now_kst, scan_id
 from .compare import compare
+from .cyclonedx import render as render_cyclonedx
 from .config import Settings
 from .osv import LookupFailed, OsvSource, VulnSource
 from .parser import Package, parse_requirements
@@ -20,6 +21,7 @@ from .storage import (
     StorageError,
     list_scans,
     previous_scan_id,
+    save_cyclonedx,
     save_report,
     save_sbom,
     scan_file,
@@ -32,9 +34,14 @@ NAME_RULE_MESSAGE = (
 )
 
 
-def links_for(project: str, sid: str, has_report: bool) -> dict:
+def links_for(project: str, sid: str, has_report: bool, has_cyclonedx: bool = False) -> dict:
+    """내려받기 경로. 파일이 없으면 null(보고서가 없는 스캔, CycloneDX 파일이 없는 과거 스캔 등)."""
     base = f"/api/projects/{project}/scans/{sid}"
-    return {"sbom": f"{base}/sbom", "report": f"{base}/report" if has_report else None}
+    return {
+        "sbom": f"{base}/sbom",
+        "report": f"{base}/report" if has_report else None,
+        "cyclonedx": f"{base}/cyclonedx" if has_cyclonedx else None,
+    }
 
 
 def error(status: int, message: str, **extra) -> JSONResponse:
@@ -126,6 +133,18 @@ def create_app(
         except StorageError:
             return error(500, "저장 실패: 결과 파일을 저장할 수 없음")
 
+        # CycloneDX 파일 (R2-5): 목록 파일을 저장한 뒤 같은 스캔 ID로 만든다. 실패해도 목록 파일과
+        # 보고서는 정상이고 요청은 201이며, 경고만 담는다(불완전한 파일은 남지 않는다).
+        warnings: list[str] = []
+        cdx_saved = True
+        try:
+            save_cyclonedx(
+                settings.data_dir, project, t, render_cyclonedx(project, t, result.packages)
+            )
+        except StorageError:
+            cdx_saved = False
+            warnings.append("CycloneDX 파일 저장 실패")
+
         # 취약점 조회. 하나라도 실패하면 조회를 중단한다 (R3-3).
         # 목록 파일은 이미 저장되어 있고, 이 요청의 보고서는 만들지 않으며, 요약 호출도 하지 않는다.
         rows: list[VulnRow] = []
@@ -151,7 +170,6 @@ def create_app(
         table, omitted = build_table(rows, settings.table_max_rows)
         summary_line = outcome.aggregate if outcome.attempted else outcome.skip_message
 
-        warnings: list[str] = []
         report_saved = True
         try:
             save_report(
@@ -171,7 +189,7 @@ def create_app(
             "table": table,
             "table_omitted": omitted,
             "warnings": warnings,
-            "links": links_for(project, sid, report_saved),
+            "links": links_for(project, sid, report_saved, cdx_saved),
             "summary": outcome.to_json(),
         }
         if not rows:
@@ -185,15 +203,16 @@ def create_app(
             return error(400, NAME_RULE_MESSAGE)
         path = scan_file(settings.data_dir, project, sid, kind)
         if path is None:
-            what = "목록 파일" if kind == "sbom" else "보고서"
+            what = {"sbom": "목록 파일", "report": "보고서", "cyclonedx": "CycloneDX 파일"}[kind]
             return error(404, f"{what}을 찾을 수 없음")
         try:
             text = path.read_text(encoding="utf-8")
         except OSError:
             return error(500, "파일을 읽을 수 없음")
-        return PlainTextResponse(
-            text,
-            media_type="text/plain; charset=utf-8",
+        media = "application/json" if kind == "cyclonedx" else "text/plain; charset=utf-8"
+        return Response(
+            content=text,
+            media_type=media,
             headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
         )
 
@@ -205,6 +224,10 @@ def create_app(
     @app.get("/api/projects/{project:path}/scans/{sid}/report")
     async def get_report(project: str, sid: str):
         return download(project, sid, "report")
+
+    @app.get("/api/projects/{project:path}/scans/{sid}/cyclonedx")
+    async def get_cyclonedx(project: str, sid: str):
+        return download(project, sid, "cyclonedx")
 
     @app.get("/api/projects/{project:path}/scans")
     async def list_project_scans(project: str):
@@ -221,7 +244,7 @@ def create_app(
                     "scan_id": s.scan_id,
                     "time": display_scan_time(s.scan_id),
                     "has_report": s.has_report,
-                    "links": links_for(project, s.scan_id, s.has_report),
+                    "links": links_for(project, s.scan_id, s.has_report, s.has_cyclonedx),
                 }
                 for s in scans
             ],
