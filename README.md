@@ -22,11 +22,11 @@
 
 ## 시연 실행
 
-무료 Gemini 키는 분당 요청 한도가 작아서, 취약점이 많은 파일을 올리면 요약이 한도(429)에 걸려 일부가 "요약 실패"로 나올 수 있습니다. 시연할 때는 요약할 건수를 줄여서 실행하세요 (기본값은 50건이고, 5건씩 묶어 요청하므로 10건이면 2번 호출).
+무료 Gemini 키는 모델당 하루 20회 요청 한도가 있어서(아래 참고), 점검마다 요약 호출 수를 줄이는 것이 안전합니다. 시연할 때는 요약할 건수를 5건으로 줄여서 실행하세요 (기본값은 50건이고 5건씩 묶어 요청하므로 5건이면 점검 1번에 호출 1회, 하루에 약 20번 시연할 수 있음). **시연 전에 실제 호출 시험이나 연습을 많이 하면 한도가 바닥나니 주의하세요.**
 
 ```powershell
 $env:GEMINI_API_KEY = "발급받은키"   # 현재 터미널에서만 유효
-docker run -d --name sbom-web -p 8000:8000 -v sbom-data:/data -e GEMINI_API_KEY -e SUMMARY_MAX_ITEMS=10 sbom-web
+docker run -d --name sbom-web -p 8000:8000 -v sbom-data:/data -e GEMINI_API_KEY -e SUMMARY_MAX_ITEMS=5 sbom-web
 ```
 
 시연 순서: ① 파일을 올려 결과 표와 요약 확인 ② 파일을 조금 고쳐 다시 올려 "이전 실행 대비" 확인 ③ 컨테이너를 지웠다가 같은 volume으로 다시 띄워도 이력(`LOAD HISTORY`)이 남아 있는 것 확인.
@@ -77,7 +77,7 @@ curl -F "file=@requirements.txt" http://localhost:8000/api/projects/demo/scans
 | `SUMMARY_MAX_ITEMS` | `50` | 요약할 최대 취약점 수 (심각도 높은 순) |
 | `SUMMARY_BATCH_SIZE` | `5` | 한 번에 요약 요청하는 항목 수 |
 
-요약이 일부 "요약 실패"로 나오면 서버 로그에서 원인을 확인하세요 (`docker logs sbom-web`, 예: `요약 묶음 실패 (5건): HTTP 429`는 사용 한도 초과). 무료 키는 분당 요청 한도가 작아서 취약점이 많으면 뒤쪽 묶음이 실패할 수 있고, `SUMMARY_MAX_ITEMS`를 줄이면 호출 수가 줄어듭니다.
+요약이 "요약 실패"로 나오면 서버 로그에서 원인을 확인하세요 (`docker logs sbom-web`, 예: `요약 묶음 실패 (5건): HTTP 429`는 사용 한도 초과). **무료 키는 모델 하나당 하루 20회 요청**만 허용합니다. 요약 호출 1번이 1회를 쓰므로 `SUMMARY_MAX_ITEMS=10`이면 점검 1번에 2회, 기본 50건이면 10회를 씁니다. 한도가 차면 요약만 실패하고 표, 이전 실행 대비, 이력, 링크는 정상입니다. 한도는 모델마다 따로라서 `-e GEMINI_MODEL=gemini-3.1-flash-lite`처럼 모델을 바꿔 피할 수 있습니다. 한도를 확인하려면 호출 1번으로 오류 메시지를 보면 됩니다 (`limit: 20 ... retry in ...`).
 
 ## API 키 넣는 법
 
