@@ -1,8 +1,13 @@
-"""이전 실행 대비 (R2-4): (패키지명, 생태계)를 기준으로 추가, 삭제, 버전 변경, 변경 없음을 센다."""
+"""이전 실행 대비 (R2-4): (패키지명, 생태계)를 기준으로 추가, 삭제, 버전 변경, 변경 없음을 센다.
+
+비교 키를 만들 때만 PyPI 이름을 PEP 503 규칙으로 정규화한다(소문자, `-` `_` `.`의 연속을 `-` 하나로).
+npm, Go, Rust 이름은 정규화하지 않는다. 화면과 파일에는 새 요청의 원문 이름을 쓴다(없어진 항목은 이전 파일의 이름).
+"""
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .parser import Package
+from .parser import ECO_PYPI, Package
 from .storage import UnreadableSbom, read_sbom_entries
 
 NO_BASELINE = "비교 대상 없음"
@@ -56,11 +61,19 @@ class Comparison:
         }
 
 
-def _group(entries: list[Item]) -> dict[tuple[str, str], list[str]]:
-    """(이름, 생태계) -> 버전 표기들. 같은 줄이 여러 번 나와도 한 번만 센다."""
-    groups: dict[tuple[str, str], list[str]] = {}
+_PEP503 = re.compile(r"[-_.]+")
+
+
+def _key(name: str, eco: str) -> tuple[str, str]:
+    """비교 키. PyPI만 이름을 정규화한다(Flask_Login, flask-login, flask.login은 같은 패키지)."""
+    return (_PEP503.sub("-", name).lower() if eco == ECO_PYPI else name, eco)
+
+
+def _group(entries: list[Item]) -> dict[tuple[str, str], tuple[str, list[str]]]:
+    """비교 키 -> (처음 나온 원문 이름, 버전 표기들). 같은 줄이 여러 번 나와도 한 번만 센다."""
+    groups: dict[tuple[str, str], tuple[str, list[str]]] = {}
     for name, version, eco in entries:
-        versions = groups.setdefault((name, eco), [])
+        _shown, versions = groups.setdefault(_key(name, eco), (name, []))
         if version not in versions:
             versions.append(version)
     return groups
@@ -76,14 +89,15 @@ def compare(previous_id: str | None, previous_path: Path | None, packages: list[
 
     new = _group([(p.name, p.version, p.ecosystem) for p in packages])
     result = Comparison(COMPARED, previous=previous_id)
-    for (name, eco), versions in new.items():
-        if (name, eco) not in old:
+    for key, (name, versions) in new.items():  # name은 새 요청의 원문 이름
+        eco = key[1]
+        if key not in old:
             result.added.append((name, ", ".join(versions), eco))
-        elif set(versions) == set(old[(name, eco)]):
-            result.unchanged += 1
+        elif set(versions) == set(old[key][1]):
+            result.unchanged += 1  # 이름 표기만 다르고 버전이 같으면 변경 없음
         else:
-            result.changed.append((name, ", ".join(old[(name, eco)]), ", ".join(versions), eco))
-    for (name, eco), versions in old.items():
-        if (name, eco) not in new:
-            result.removed.append((name, ", ".join(versions), eco))
+            result.changed.append((name, ", ".join(old[key][1]), ", ".join(versions), eco))
+    for key, (name, versions) in old.items():  # 없어진 항목은 이전 파일의 이름
+        if key not in new:
+            result.removed.append((name, ", ".join(versions), key[1]))
     return result

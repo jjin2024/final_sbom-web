@@ -20,7 +20,9 @@ ECO_GO = "Go"
 ECO_CRATES = "crates.io"
 ECOSYSTEM = ECO_PYPI  # requirements.txt 형식의 생태계(기존 이름 유지)
 
-_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(.*)$")
+_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[([^\]\s]*)\])?\s*(.*)$")
+# extras는 이름 바로 뒤에 붙은 [a,b] 형태만 인정한다. 목록 파일과 CycloneDX에는 기록하지 않는다.
+_EXTRAS = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(,[A-Za-z0-9][A-Za-z0-9._-]*)*$")
 _SPEC = re.compile(r"^(===|==|~=|!=|<=|>=|<|>)\s*[A-Za-z0-9.*+!_-]+$")
 _PIN = re.compile(r"^==[A-Za-z0-9.+!_-]+$")  # 와일드카드(*)와 쉼표가 없어야 확정
 
@@ -53,7 +55,9 @@ def _parse_line(line: str) -> Package | None:
     m = _LINE.match(line)
     if not m:
         return None
-    name, rest = m.group(1), m.group(2).replace(" ", "")
+    name, extras, rest = m.group(1), m.group(2), m.group(3).replace(" ", "")
+    if extras is not None and not _EXTRAS.match(extras):  # `flask[]==1.0` 같은 빈 대괄호 등
+        return None
     if rest == "":
         return Package(name, "-", pinned=False)
     specs = rest.split(",")
