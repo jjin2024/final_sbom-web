@@ -157,7 +157,7 @@ def test_go_mod_basic_rules():
         ("golang.org/x/text", "v0.3.7", "Go", True),   # // indirect 주석은 버리고 항목은 남긴다
         ("github.com/gorilla/mux", "v1.8.0", "Go", True),
     ]
-    assert r.skipped_lines == 3  # module, go, replace 줄
+    assert r.skipped_lines == 0  # module, go, replace 줄은 정상 내용이라 건너뛴 줄이 아님
 
 
 def test_go_mod_directives_blocks_comments_and_odd_formatting():
@@ -183,6 +183,8 @@ def test_go_mod_directives_blocks_comments_and_odd_formatting():
         "retract (\n"
         "\tv1.0.2\n"
         ")\n"
+        "unknown-directive foo\n"                     # 알 수 없는 지시어
+        "require github.com/g/h\n"                    # 버전이 없는 한 줄 require
     )
     r = parse_go_mod(text)
     assert [(p.name, p.version) for p in r.packages] == [
@@ -190,15 +192,15 @@ def test_go_mod_directives_blocks_comments_and_odd_formatting():
         ("github.com/c/d", "v0.0.0-20210101000000-abcdef123456"),
         ("github.com/e/f", "v2.1.0+incompatible"),
     ]
-    # module, go, toolchain 3 + 해석 못 한 줄 1 + `replace (` 줄 1 + replace 블록 안 2 + exclude 1
-    # + `retract v1.0.1` 1 + `retract (` 줄 1 + retract 블록 안 1. 닫는 `)`와 주석, 빈 줄은 세지 않는다
-    assert r.skipped_lines == 3 + 1 + 1 + 2 + 1 + 1 + 1 + 1
+    # 읽을 수 없는 줄만 센다: 블록 안의 버전 없는 항목 1 + 알 수 없는 지시어 1 + 버전 없는 한 줄 require 1.
+    # module, go, toolchain, replace, exclude, retract(블록 포함), 주석, 빈 줄은 세지 않는다
+    assert r.skipped_lines == 3
 
 
 def test_go_mod_empty_or_without_requirements_yields_no_packages():
     assert parse_go_mod("").packages == []
     r = parse_go_mod("module x\n\ngo 1.21\n")
-    assert r.packages == [] and r.skipped_lines == 2
+    assert r.packages == [] and r.skipped_lines == 0
 
 
 def test_cargo_lock_basic_rules():
@@ -301,7 +303,7 @@ def test_upload_go_mod_sends_the_version_exactly_as_written(make_client, data_di
     src = FakeSource(SET_GO)
     r = send(make_client(src), "go.mod", FILE_L)
     body = r.json()
-    assert r.status_code == 201 and body["collected"] == 3 and body["skipped_lines"] == 3
+    assert r.status_code == 201 and body["collected"] == 3 and body["skipped_lines"] == 0
     assert list_lines(data_dir, body) == [
         "github.com/gin-gonic/gin v1.9.0 Go", "golang.org/x/text v0.3.7 Go", "github.com/gorilla/mux v1.8.0 Go"]
     assert ("github.com/gin-gonic/gin", "v1.9.0", "Go") in src.calls  # v 접두사 그대로
@@ -451,3 +453,19 @@ def test_real_osv_go_version_prefix_does_not_change_results(data_dir):
     with_v = sorted(f.vuln_id for f in src.query("golang.org/x/text", "v0.3.7", "Go"))
     without = sorted(f.vuln_id for f in src.query("golang.org/x/text", "0.3.7", "Go"))
     assert with_v and with_v == without  # 그래서 원문(v 포함)을 그대로 보낸다
+
+
+# ---- 사례 72: 읽을 수 없는 줄이 있는 go.mod (정상 줄은 건너뛴 줄이 아니다) ----
+
+def test_case72_go_mod_counts_only_unreadable_lines(make_client, data_dir):
+    raw = (b"module example.com/demo\n\ngo 1.21\n\n"
+           b"require github.com/gin-gonic/gin v1.9.0\n"
+           b"require (\n\tgolang.org/x/text v0.3.7 // indirect\n\tgithub.com/no/version\n)\n"
+           b"replace github.com/gorilla/mux => ../mux\n"
+           b"mystery-directive x y\n")
+    src = FakeSource(SET_GO)
+    r = send(make_client(src), "go.mod", raw)
+    body = r.json()
+    assert r.status_code == 201 and body["collected"] == 2
+    assert body["skipped_lines"] == 2  # 버전 없는 require 항목, 알 수 없는 지시어. module, go, replace는 세지 않음
+    assert sorted(src.calls) == [("github.com/gin-gonic/gin", "v1.9.0", "Go"), ("golang.org/x/text", "v0.3.7", "Go")]

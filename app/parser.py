@@ -171,8 +171,9 @@ def _go_requirement(text: str) -> Package | None:
 
 def parse_go_mod(text: str) -> ParseResult:
     """go.mod의 `require` 한 줄과 `require ( ... )` 블록. `// indirect` 같은 주석은 버린다.
-    `module`, `go`, `toolchain`, `replace`, `exclude`, `retract` 줄(블록 안의 줄 포함)은 해석 대상이 아니므로
-    건너뛴 줄 수에 센다. 빈 줄과 주석만 있는 줄은 세지 않는다."""
+    `module`, `go`, `toolchain`, `godebug`, `replace`, `exclude`, `retract` 줄(블록 시작·끝과 블록 안의 줄 포함),
+    빈 줄, 주석은 패키지 목록이 아닌 정상적인 내용이므로 건너뛴 줄 수에 세지 않는다.
+    읽을 수 없는 줄(버전이 없는 require 항목, 알 수 없는 지시어)만 센다."""
     packages: list[Package] = []
     skipped = 0
     block = ""  # "" | "require" | "other"
@@ -189,9 +190,7 @@ def parse_go_mod(text: str) -> ParseResult:
                     packages.append(pkg)
                 else:
                     skipped += 1
-            else:
-                skipped += 1
-            continue
+            continue  # 해석 대상이 아닌 지시어의 블록 안의 줄
         parts = line.split(None, 1)  # 공백과 탭 모두 구분자
         head = parts[0]
         rest = parts[1].strip() if len(parts) > 1 else ""
@@ -205,8 +204,9 @@ def parse_go_mod(text: str) -> ParseResult:
                 else:
                     skipped += 1
         else:
-            skipped += 1
-            if head in _GO_IGNORED_DIRECTIVES and rest == "(":
+            if head not in _GO_IGNORED_DIRECTIVES:
+                skipped += 1  # 알 수 없는 지시어
+            if rest == "(":
                 block = "other"
     return ParseResult(packages, skipped)
 
