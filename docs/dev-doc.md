@@ -675,7 +675,7 @@ HTTP 인터페이스
 | 목록 파일 저장을 "이미 있으면 실패"(`os.link`)로 바꾸고, 하드링크를 지원하지 않는 파일 시스템에서는 존재 확인 후 이름 바꾸기로 대체. 같은 스캔 ID의 보고서만 남아 있어도 409. 임시 파일 이름에 무작위 값을 넣어 동시 요청끼리 겹치지 않게 함 | R2-3의 "기존 파일을 덮어쓰지 않음"을 동시 요청에서도 지키기 위해 |
 | 기존 시험을 새 형식에 맞게 수정: 목록 항목 추출 도우미가 `##` 구역을 뺌, 저장 실패 시험이 `os.link`와 `os.replace`를 모두 막음 | 목록 파일에 이전 실행 대비 구역이 생기고 저장 방식이 바뀜 |
 | Gemini 호출 방식을 공식 SDK가 아니라 직접 HTTP 호출(표준 라이브러리 `urllib`)로 결정(4.1의 미정 사항). 요약 호출은 `SummarySource.summarize(항목들)` 인터페이스 뒤로 분리하고 실제 구현은 `GeminiSource`, 시험은 `FakeSummary`와 가짜 HTTP로 바꿔 끼움. `create_app(summary_source=...)`를 주지 않으면 `GEMINI_API_KEY`가 있을 때만 `GeminiSource`를 만들고 없으면 요약을 건너뜀 | SDK는 의존 패키지가 많아 이미지가 커지고, R4-2의 실패 판정과 타임아웃을 통제하기 어려움. OSV와 같은 구조로 일관되게 함 |
-| Gemini 요청과 정상 완료 판정(4.5의 미정 항목): `POST {GEMINI_API_URL}/v1beta/models/{GEMINI_MODEL}:generateContent`, 키는 헤더 `x-goog-api-key`로만 보냄, 본문은 JSON 모드(`responseMimeType`, `responseSchema`)와 `maxOutputTokens`. 항목은 `{id, package, version, vulnerability}`만 전달. 정상 완료는 "HTTP 성공 + `candidates[0].finishReason`이 `STOP` + 모든 id의 설명과 권장이 있음", 그 밖은 모두 `SummaryFailed`(원인은 구분하지 않음, X5). 요약문은 `설명 권장: 조치` 한 덩어리 | `finishReason`은 응답이 토큰 한도로 잘리거나 차단된 경우를 판정하기 위한 필드. 실제 호출로 `STOP` 응답과 스키마대로의 JSON을 확인함(2건 요약). 토큰 한도로 잘리는 경우의 실제 응답은 한도 때문에 확인하지 못함(5.3) |
+| Gemini 요청과 정상 완료 판정(4.5의 미정 항목): `POST {GEMINI_API_URL}/v1beta/models/{GEMINI_MODEL}:generateContent`, 키는 헤더 `x-goog-api-key`로만 보냄, 본문은 JSON 모드(`responseMimeType`, `responseSchema`)와 `maxOutputTokens`. 항목은 `{id, package, version, vulnerability}`만 전달. 정상 완료는 "HTTP 성공 + `candidates[0].finishReason`이 `STOP` + 모든 id의 설명과 권장이 있음", 그 밖은 모두 `SummaryFailed`(원인은 구분하지 않음, X5). 요약문은 `설명 권장: 조치` 한 덩어리 | `finishReason`은 응답이 토큰 한도로 잘리거나 차단된 경우를 판정하기 위한 필드. 실제 호출로 `STOP` 응답과 스키마대로의 JSON을 확인함(2건 요약). 토큰 한도로 잘리는 경우의 실제 응답은 처음에는 하루 요청 한도 때문에 확인하지 못했으나 2026-11-10에 최대 출력 토큰 1로 실제 호출해 응답 미완료(`not completed`)로 실패 처리됨을 확인함 |
 | 설정값 추가: `GEMINI_API_KEY`(환경 변수로만, 설정 객체를 출력해도 보이지 않게 `repr=False`), `GEMINI_MODEL`(기본 `gemini-3.5-flash`, 처음 가정한 `gemini-2.5-flash`는 신규 사용자에게 종료되어 404여서 2026-11-09에 후보를 실제로 호출해 정함), `GEMINI_API_URL`, `GEMINI_MAX_OUTPUT_TOKENS`(기본 2048), `GEMINI_TIMEOUT_SECONDS`(기본 60초, OSV의 10초와 따로 둠: 실제 응답이 2~11초이고 혼잡할 때는 40초 넘게 걸리기도 해서), `GEMINI_THINKING_LEVEL`(기본 `low`, 빈 값이면 `thinkingConfig`를 보내지 않음. 실제 호출에서 생각 1,400여 토큰에 약 10초가 걸리던 것이 2~4초가 되고, 생각 토큰이 `maxOutputTokens`를 쓰는 위험도 줄어듦), `SUMMARY_MAX_ITEMS`(기본 50), `SUMMARY_BATCH_SIZE`(기본 5) | 4.3의 "환경 변수로 변경 가능" 설정값. 최대 출력 토큰의 기본값은 문서가 구현 때 정하라고 했음 |
 | 점검 응답의 `summary`와 보고서 형식을 정함: 요약을 시도하면 `{"succeeded", "failed", "excluded", "text": "요약 N건 성공, N건 실패, N건 제외"}`, 건너뛰면 `{"skipped_reason": "API 키 없음" 또는 "요약할 취약점 없음", "message": "요약 건너뜀(API 키 없음)" 또는 "요약 단계 생략(요약할 취약점 없음)"}`. 취약점이 없을 때의 `summary`에도 `message`가 추가됨. 보고서는 항목 줄에 `[요약 상태]`, `## 요약` 구역(요약문), `## 요약 집계` 구역(집계 또는 건너뜀 안내) | R4의 집계와 건너뜀 안내를 응답과 보고서에 담기 위해 형식을 정함 |
 | 키가 없을 때 표의 모든 항목이 `요약 안 함(API 키 없음)` 상태가 됨. 그래서 T3 때 "요약 상태 열은 비워 둠"이던 응답이 달라짐 | R4와 사례 34 |
@@ -765,14 +765,14 @@ HTTP 인터페이스
 | T6 조회 실패 처리 | 완료 | 30 통과(가짜 응답과 컨테이너의 실제 DNS 실패). "Gemini 호출 0회"는 T8 이후 |
 | T7 이력 조회, 재요청, 비교 | 완료 | 13~22 통과(R2-2, R2-3, R2-4). 41도 Docker에서 통과. 화면 반영은 T5의 남은 부분으로 완료 |
 | T8 AI 요약 | 완료 | 31~36 통과(가짜 Gemini), 27과 30의 Gemini 호출 0회 판정 완료. 실제 Gemini로 2건 요약 성공, 5건 묶음 1회 성공(2026-11-10) |
-| T9 AI 요약 실패 처리 | 완료 | 37, 38 통과, 39는 가짜 HTTP와 실제 Gemini 1회로 통과(실패 사유 확인을 강화한 시험은 429로 미통과, 5.3) |
+| T9 AI 요약 실패 처리 | 완료 | 37, 38 통과, 39는 가짜 HTTP와 실제 Gemini 1회로 통과(실패 사유 확인을 강화한 시험도 2026-11-10에 통과, 5.3) |
 | T10 전체 점검과 문서 보완 | 완료 | 자동 테스트 전체 실행, Docker 최종 이미지로 40, 41, 42 재확인, 5.5의 사례별 점검표 작성, 5장 정리 |
 | T11 CycloneDX 출력 | 완료 | 45~52 통과. `tests/test_t11.py` 30건, 공식 스키마 검증, 컨테이너·브라우저 확인 |
 | T12 입력 파일 종류 확대, 병렬 조회 | 완료 | 53~65 통과. `tests/test_t12.py` 79건(실제 OSV 4건은 `OSV_LIVE_TEST=1`), `tests/test_t12_parallel.py` 14건. 컨테이너에서 파일 종류별 업로드와 실제 OSV, 실제 `package-lock.json`(443건 조회) 35.6초 |
 | T13 extras, 이름 정규화 | 완료 | 66~71 통과. `tests/test_t13.py` 51건 |
 
 사례 71개 기준: 완료 기준의 기대 결과대로 확인한 것이 71건(1~71)이다. 단, 다음 한계가 있다.
-- 31~38은 가짜 Gemini 기준이다. 실제 Gemini는 2건 요약만 성공을 확인했다.
+- 31~38은 가짜 Gemini 기준이다. 실제 Gemini는 2건 요약과 5건 묶음 1회(2026-11-10)의 성공을 확인했다.
 - 사례 39는 2026-11-10에 실제 Gemini로 실패 사유(`not completed`)까지 확인하는 강화 시험이 통과했다.
 - 컨테이너에서 실제 키로 끝까지(5건 이상, 여러 묶음) 실행하는 것은 확인하지 못했다. 5건 묶음 1회는 2026-11-10에 직접 호출로 성공했다.
 
@@ -785,7 +785,7 @@ HTTP 인터페이스
 - 선언 파일은 직접 의존성만 담고, CycloneDX에는 취약점 정보가 없으며, 응답 표에 생태계 열이 없다(5.3).
 - T11~T13 확인 중에는 실제 Gemini를 호출하지 않았고(하루 요청 한도), 이튿날(2026-11-10) 5건 묶음과 사례 39의 실패 사유를 확인했다.
 
-### 5.5 완료 기준 사례별 점검표 (T10, 2026-11-09)
+### 5.5 완료 기준 사례별 점검표 (T10~T13, 2026-11-09~11-10)
 3.2의 71개 사례를 어떻게 확인했는지 정리한다. "자동 시험"은 `sbom-web/tests/`의 파일이고, 기본 실행(`pytest`)에서 외부 서비스 없이 돈다.
 
 | 사례 | 요구사항 | 확인 방법 | 결과 |
@@ -799,9 +799,9 @@ HTTP 인터페이스
 | 23~24, 26~29 | R3, R3-2 | 자동 시험 `test_t3.py`(고정 응답 세트 D, E, F) | 통과 |
 | 25 | R3 | 실제 OSV 1회(`OSV_LIVE_TEST=1`, `requests 2.31.0`) | 통과 |
 | 30 | R3-3 | 자동 시험 `test_t6.py`와 컨테이너에서 실제 DNS 실패 | 통과 |
-| 31~36 | R4 | 자동 시험 `test_t8.py`(가짜 Gemini). 요청 본문은 가짜 HTTP로 검사 | 통과 (실제 Gemini는 2건 요약만 확인) |
+| 31~36 | R4 | 자동 시험 `test_t8.py`(가짜 Gemini). 요청 본문은 가짜 HTTP로 검사 | 통과 (실제 Gemini는 2건 요약과 5건 묶음 1회(2026-11-10)만 확인) |
 | 37~38 | R4-2 | 자동 시험 `test_t9.py`(가짜 Gemini, 가짜 HTTP 오류 6종). 컨테이너에서 가짜 키와 연결 불가 주소로 확인 | 통과 |
-| 39 | R4-2 | 가짜 HTTP(`MAX_TOKENS`)와 실제 Gemini 1회(`test_t9.py`) | 통과. 단, 실패 사유까지 보는 강화 시험은 429로 미통과 |
+| 39 | R4-2 | 가짜 HTTP(`MAX_TOKENS`)와 실제 Gemini 1회(`test_t9.py`) | 통과. 실패 사유(`not completed`)까지 보는 강화 시험도 2026-11-10에 통과 |
 | 40~42 | R5 | Docker 최종 이미지(T10에서 `sbom-web:t10`으로, T13 이후 `sbom-web:t13`으로 재확인). 사례 42는 `inspect`와 `history`에서 키 관련 문자열 0건 | 통과 |
 | 43~44 | R6, R6-2 | Playwright 브라우저: 가짜 Gemini 서버와 컨테이너(실제 OSV)에서 폼 전송, 결과 표, 이전 실행 대비, 요약 집계, 링크 클릭 내려받기, 이력, 빈 파일 오류 | 통과 |
 | 45~51 | R2-5 | 자동 시험 `test_t11.py`(공식 CycloneDX 1.5 스키마 검증 포함). 컨테이너에서 파일 종류별 5개 CycloneDX를 내려받아 같은 스키마로 검증 | 통과 |
