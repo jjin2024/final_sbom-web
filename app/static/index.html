@@ -48,7 +48,7 @@ let h='<div class="diff"><div class="diff-title">// vs previous <span class="dim
 if(add.length+rem.length+chg.length){h+='<ul class="diff-list">'+add.map(i=>'<li class="plus">+ '+esc(i.name)+' '+esc(i.version)+' '+esc(i.ecosystem)+'</li>').join('')+rem.map(i=>'<li class="minus">- '+esc(i.name)+' '+esc(i.version)+' '+esc(i.ecosystem)+'</li>').join('')+chg.map(i=>'<li class="tilde">~ '+esc(i.name)+' '+esc(i.from)+' -&gt; '+esc(i.to)+' '+esc(i.ecosystem)+'</li>').join('')+'</ul>'}
 return h+'</div>'}
 function summaryHtml(d){const s=d.summary;if(!s||typeof s!=='object')return '';
-if(s.text)return '<div class="notice'+(Number(s.failed)>0?'':' info')+'"><strong>summary:</strong>'+esc(s.text)+'</div>';
+if(s.text)return '<div class="notice'+(Number(s.failed)>0?'':' info')+'"><strong>summary:</strong>'+esc(s.text)+(s.calls!==undefined?' <span class="code">'+esc('요약 호출 '+s.calls+'회, 재사용 '+s.reused+'건')+'</span>':'')+'</div>';
 if(s.skipped_reason)return '<div class="notice info"><strong>summary:</strong>'+esc(s.message||('요약 건너뜀('+s.skipped_reason+')'))+'</div>';return ''}
 function historyMessage(text,isError){historyList.innerHTML=isError?'<div class="notice error"><strong>error:</strong>'+esc(text)+'</div>':'<p class="help">'+esc(text)+'</p>'}
 function renderHistory(data){const scans=arr(data&&data.scans);if(!scans.length){historyMessage('이 프로젝트의 이력이 아직 없습니다.');return}
