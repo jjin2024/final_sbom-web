@@ -74,6 +74,7 @@ class GeminiSource:
         opener: Callable[..., object] = urllib.request.urlopen,
     ):
         self._key = api_key
+        model = model.strip().removeprefix("models/")  # 모델 목록의 이름(models/...)을 그대로 써도 된다
         self._url = f"{base_url.rstrip('/')}/v1beta/models/{model}:generateContent"
         self._timeout = timeout
         self._max_tokens = max_output_tokens
@@ -122,9 +123,12 @@ class GeminiSource:
         try:
             with self._opener(req, timeout=self._timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            # 진단용으로 상태 코드(숫자)만 남긴다. 주소, 헤더(키), 응답 본문은 넣지 않는다
+            raise SummaryFailed(f"HTTP {e.code}") from None
         except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
             # 원인(주소, 응답 내용)은 호출한 쪽으로 넘기지 않는다
-            raise SummaryFailed(type(e).__name__) from e
+            raise SummaryFailed(type(e).__name__) from None
         if not isinstance(data, dict):
             raise SummaryFailed("bad response")
         return data

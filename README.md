@@ -58,7 +58,8 @@ curl -F "file=@requirements.txt" http://localhost:8000/api/projects/demo/scans
 | `EXTERNAL_TIMEOUT_SECONDS` | `10` | 외부 API 호출 제한 시간 |
 | `OSV_API_URL` | `https://api.osv.dev` | OSV 주소 (API 키 불필요) |
 | `GEMINI_API_KEY` | (없음) | Gemini API 키. 없으면 서버는 정상 기동하고 요약만 건너뜀 |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | 요약에 쓸 모델 (키로 확인 필요) |
+| `GEMINI_MODEL` | `gemini-3.5-flash` | 요약에 쓸 모델. 모델은 시간이 지나면 종료되므로 404가 나오면 아래 목록 명령으로 확인 |
+| `GEMINI_TIMEOUT_SECONDS` | `60` | Gemini 호출 제한 시간 (OSV의 `EXTERNAL_TIMEOUT_SECONDS`와 따로) |
 | `GEMINI_API_URL` | `https://generativelanguage.googleapis.com` | Gemini 주소 |
 | `GEMINI_MAX_OUTPUT_TOKENS` | `2048` | 요약 요청의 최대 출력 토큰 |
 | `SUMMARY_MAX_ITEMS` | `50` | 요약할 최대 취약점 수 (심각도 높은 순) |

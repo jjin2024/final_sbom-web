@@ -10,9 +10,11 @@ DEFAULT_OSV_URL = "https://api.osv.dev"
 DEFAULT_SUMMARY_MAX_ITEMS = 50
 DEFAULT_SUMMARY_BATCH_SIZE = 5
 DEFAULT_GEMINI_URL = "https://generativelanguage.googleapis.com"
-# 모델 이름은 실제 키로 호출해 확인해야 한다. 환경 변수 GEMINI_MODEL로 바꾼다.
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+# 모델 이름은 시간이 지나면 종료된다(gemini-2.5-flash는 신규 사용자에게 404). 환경 변수 GEMINI_MODEL로 바꾼다.
+# gemini-3.5-flash는 2026-11-09에 실제 호출로 확인했다(HTTP 200, finishReason STOP, 약 3.7초).
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
 DEFAULT_GEMINI_MAX_OUTPUT_TOKENS = 2048
+DEFAULT_GEMINI_TIMEOUT = 60.0  # LLM 응답은 OSV보다 느려서 외부 호출 제한 시간(10초)과 따로 둔다
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,7 @@ class Settings:
     gemini_url: str = DEFAULT_GEMINI_URL
     gemini_model: str = DEFAULT_GEMINI_MODEL
     gemini_max_output_tokens: int = DEFAULT_GEMINI_MAX_OUTPUT_TOKENS
+    gemini_timeout: float = DEFAULT_GEMINI_TIMEOUT
     # repr=False: 설정을 출력하거나 로그에 남겨도 키가 보이지 않게 한다
     gemini_api_key: str = field(default="", repr=False)
 
@@ -46,5 +49,6 @@ class Settings:
             gemini_max_output_tokens=int(
                 env("GEMINI_MAX_OUTPUT_TOKENS", DEFAULT_GEMINI_MAX_OUTPUT_TOKENS)
             ),
+            gemini_timeout=float(env("GEMINI_TIMEOUT_SECONDS", DEFAULT_GEMINI_TIMEOUT)),
             gemini_api_key=(env("GEMINI_API_KEY") or "").strip(),
         )

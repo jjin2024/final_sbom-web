@@ -281,10 +281,28 @@ def test_gemini_source_network_failures_become_summary_failed(exc):
 )
 def test_real_gemini_returns_a_summary_for_each_item():
     s = Settings.from_env()
-    src = GeminiSource(s.gemini_api_key, s.gemini_url, s.gemini_model, 30, s.gemini_max_output_tokens)
+    src = GeminiSource(s.gemini_api_key, s.gemini_url, s.gemini_model, s.gemini_timeout, s.gemini_max_output_tokens)
     out = src.summarize([SummaryItem("flask", "3.0.0", "CVE-2026-27205"),
                          SummaryItem("requests", "2.31.0", "CVE-2024-35195")])
     assert len(out) == 2 and all(isinstance(t, str) and len(t) > 10 for t in out)
+
+
+def test_http_error_keeps_only_the_status_code_for_diagnosis():
+    import urllib.error
+
+    def opener(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, io.BytesIO(b'{"error":"model x not found"}'))
+
+    with pytest.raises(SummaryFailed) as info:
+        make_gemini(opener).summarize([SummaryItem("a", "1", "X-1")])
+    assert str(info.value) == "HTTP 404"  # 키, 주소, 응답 본문은 메시지에 없다
+
+
+def test_model_name_from_the_model_list_works_as_is():
+    http = FakeHttp()
+    GeminiSource("k", "https://g.example", "models/gemini-x", 5, 100, opener=http).summarize(
+        [SummaryItem("a", "1", "X-1")])
+    assert http.requests[0]["url"] == "https://g.example/v1beta/models/gemini-x:generateContent"
 
 
 # ---- 키가 새지 않는다 ----
@@ -305,8 +323,19 @@ def test_settings_from_env_reads_the_key_only_from_environment(monkeypatch, data
     monkeypatch.setenv("SUMMARY_BATCH_SIZE", "3")
     monkeypatch.setenv("GEMINI_MODEL", "m-env")
     monkeypatch.setenv("GEMINI_MAX_OUTPUT_TOKENS", "9")
+    monkeypatch.setenv("GEMINI_TIMEOUT_SECONDS", "12.5")
     s = Settings.from_env()
     assert (s.summary_max_items, s.summary_batch_size, s.gemini_model, s.gemini_max_output_tokens) == (7, 3, "m-env", 9)
+    assert s.gemini_timeout == 12.5
+
+
+def test_gemini_gets_its_own_longer_timeout_than_osv(data_dir, monkeypatch):
+    import app.main as main
+    made = []
+    monkeypatch.setattr(main, "GeminiSource", lambda *a: made.append(a) or FakeSummary())
+    create_app(Settings(data_dir=data_dir, gemini_api_key="k", external_timeout=10), vuln_source=FakeSource())
+    assert made[0][3] == 60.0 and made[0][3] > 10  # 모델 응답은 OSV보다 느려서 따로 둔다
+    assert Settings(data_dir=data_dir).gemini_model == "gemini-3.5-flash"
 
 
 def test_api_key_is_not_written_anywhere_in_the_source_tree():

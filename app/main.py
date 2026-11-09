@@ -66,7 +66,7 @@ def create_app(
             settings.gemini_api_key,
             settings.gemini_url,
             settings.gemini_model,
-            settings.external_timeout,
+            settings.gemini_timeout,
             settings.gemini_max_output_tokens,
         )
     app = FastAPI()
