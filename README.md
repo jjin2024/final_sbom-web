@@ -2,7 +2,7 @@
 
 의존성 파일(`requirements.txt`, `package-lock.json`, `package.json`, `go.mod`, `Cargo.lock`)을 올리면 패키지·버전 목록(SBOM)을 저장하고 표준 형식 CycloneDX JSON으로도 만들며, [OSV](https://osv.dev)에서 알려진 취약점을 조회해 심각도 순으로 보여 주는 웹 서비스입니다. 인증 없는 단일 사용자 데모이며, 로컬 Docker 실행을 기준으로 합니다.
 
-개발 문서(요구사항, 완료 기준, 설계, 변경 기록)는 이 저장소의 [`docs/dev-doc.md`](docs/dev-doc.md)에 있습니다.
+개발 문서(요구사항, 완료 기준, 설계, 변경 기록)는 이 저장소의 [`docs/dev-doc.md`](docs/dev-doc.md)에 있습니다. 상세 규칙, 확인 사례 전체, 변경 기록 전문은 [`docs/appendix.md`](docs/appendix.md)에 있습니다.
 
 ## 진행 상태
 
