@@ -7,7 +7,7 @@
 | 하는 일 | 의존성 파일 1개를 올리면 구성요소 목록(SBOM) 작성, 취약점 조회, AI 요약, 이전 점검과 비교 |
 | 입력 / 출력 | requirements.txt, package-lock.json, package.json, go.mod, Cargo.lock / 목록(txt), CycloneDX 1.5(json), 취약점 보고서(txt) |
 | 구현 | FastAPI + Docker, 이력은 volume 파일, 외부 연동은 OSV와 Gemini |
-| 결과 | 완료 기준 82개 사례 확인, 자동 시험 396건 통과 |
+| 결과 | 완료 기준 82개 사례 확인, 자동 시험 403건 모두 통과(실제 OSV·Gemini 호출 7건 포함) |
 
 ## 1. 문제, 사용자, 시나리오 정의
 
@@ -183,7 +183,7 @@ FastAPI 서버와 화면을 Docker 이미지로 만들어 컨테이너로 실행
 ## 5. 테스트를 통한 개선 기록
 
 ### 5.1 시험 결과
-자동 시험은 396건 통과, 7건 건너뜀이다. 건너뛴 7건은 실제 OSV(5건)와 실제 Gemini(2건)를 부르는 시험이라 환경 변수가 있을 때만 실행하며, 기본 실행에서 실패하는 시험은 없다. 완료 기준 82개 사례는 모두 기대 결과대로 확인했다.
+자동 시험은 403건이 모두 통과했고 건너뜀은 없다. 기본 실행(`pytest`)은 외부 서비스 없이 가짜 응답으로 396건을 실행하고, 실제 OSV(5건)와 실제 Gemini(2건)를 부르는 시험 7건은 환경 변수(`OSV_LIVE_TEST=1`, `GEMINI_LIVE_TEST=1`)와 API 키를 설정하면 함께 실행되며 모두 통과했다. 완료 기준 82개 사례는 모두 기대 결과대로 확인했다.
 
 | 확인 방법 | 사례 |
 |---|---|
@@ -269,7 +269,7 @@ docker run -d --name sbom-web -p 8000:8000 -v sbom-data:/data -e GEMINI_API_KEY 
 | "조회 실패, 목록은 저장됨"(502) | 인터넷 연결을 확인하고 다시 시도한다. |
 | 같은 프로젝트에 연속 업로드해 409 | 1초 뒤 다시 올린다. |
 
-정리: `docker rm -f sbom-web`, 이력까지 지우려면 `docker volume rm sbom-data`. 시험은 `python -m venv .venv`, `.venv/Scripts/python -m pip install -r requirements-dev.txt`, `.venv/Scripts/python -m pytest -q`로 실행한다(외부 호출 없이 실행).
+정리: `docker rm -f sbom-web`, 이력까지 지우려면 `docker volume rm sbom-data`. 시험은 `python -m venv .venv`, `.venv/Scripts/python -m pip install -r requirements-dev.txt`, `.venv/Scripts/python -m pytest -q`로 실행한다(외부 호출 없이 396건 실행). 실제 OSV·Gemini 시험까지 실행하려면 `OSV_LIVE_TEST=1`, `GEMINI_LIVE_TEST=1`과 API 키를 설정한다(Gemini 응답이 느리면 `GEMINI_TIMEOUT_SECONDS=120`도 설정하며, 모두 실행하면 403건).
 
 ## 부록
 
