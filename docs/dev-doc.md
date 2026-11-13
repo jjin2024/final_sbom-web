@@ -269,7 +269,7 @@ docker run -d --name sbom-web -p 8000:8000 -v sbom-data:/data -e GEMINI_API_KEY 
 | "조회 실패, 목록은 저장됨"(502) | 인터넷 연결을 확인하고 다시 시도한다. |
 | 같은 프로젝트에 연속 업로드해 409 | 1초 뒤 다시 올린다. |
 
-정리: `docker rm -f sbom-web`, 이력까지 지우려면 `docker volume rm sbom-data`. 시험은 `python -m venv .venv`, `.venv/Scripts/python -m pip install -r requirements-dev.txt`, `.venv/Scripts/python -m pytest -q`로 실행한다(외부 호출 없이 396건 실행). 실제 OSV·Gemini 시험까지 실행하려면 `OSV_LIVE_TEST=1`, `GEMINI_LIVE_TEST=1`과 API 키를 설정한다(Gemini 응답이 느리면 `GEMINI_TIMEOUT_SECONDS=120`도 설정하며, 모두 실행하면 403건).
+정리: `docker rm -f sbom-web`, 이력까지 지우려면 `docker volume rm sbom-data`. 시험은 `python -m venv .venv`, `.venv/Scripts/python -m pip install -r requirements-dev.txt`, `.venv/Scripts/python -m pytest -q`로 실행한다(외부 호출 없이 396건 실행). 실제 OSV·Gemini 시험까지 실행하려면 `OSV_LIVE_TEST=1`, `GEMINI_LIVE_TEST=1`과 API 키를 설정한다(모두 실행하면 403건).
 
 ## 부록
 

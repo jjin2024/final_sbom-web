@@ -85,7 +85,7 @@ def test_case39_incomplete_response_marks_the_batch_failed(data_dir):
 def test_case39_real_gemini_with_one_output_token(data_dir, caplog):
     caplog.set_level(logging.WARNING, logger="sbom.summary")
     s = Settings(data_dir=data_dir, gemini_api_key=os.environ["GEMINI_API_KEY"], gemini_max_output_tokens=1,
-                 gemini_timeout=60)
+                 gemini_timeout=120)  # 실제 호출은 응답이 느릴 수 있어 넉넉히
     c = TestClient(create_app(s, vuln_source=FakeSource(SET_D)))  # 실제 Gemini, 가짜 OSV
     body = upload(c, content=FILE_D).json()
     assert set(statuses(body).values()) == {"요약 실패"}

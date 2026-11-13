@@ -282,7 +282,8 @@ def test_gemini_source_network_failures_become_summary_failed(exc):
 )
 def test_real_gemini_returns_a_summary_for_each_item():
     s = Settings.from_env()
-    src = GeminiSource(s.gemini_api_key, s.gemini_url, s.gemini_model, s.gemini_timeout,
+    live_timeout = max(s.gemini_timeout, 120)  # 실제 호출은 응답이 느릴 수 있어 제한 시간을 넉넉히 둔다
+    src = GeminiSource(s.gemini_api_key, s.gemini_url, s.gemini_model, live_timeout,
                        s.gemini_max_output_tokens, s.gemini_thinking_level)
     out = src.summarize([SummaryItem("flask", "3.0.0", "CVE-2026-27205"),
                          SummaryItem("requests", "2.31.0", "CVE-2024-35195")])
