@@ -50,6 +50,14 @@ docker run -d --name sbom-web -p 8000:8000 -v sbom-data:/data sbom-web
 - 시각은 한국 시간(KST)으로 고정입니다.
 - 인증이 없으므로 외부에 공개하지 마세요.
 
+## 사용 방법
+
+1. `project_name`에 프로젝트 이름을 입력하고 `package_file`에서 의존성 파일을 선택한 뒤 `RUN VULNERABILITY SCAN`을 누릅니다. 파일 이름이 `package-lock.json`, `package.json`, `go.mod`, `Cargo.lock`이면 그 형식으로, 아니면 `requirements.txt` 형식으로 읽습니다.
+2. 결과에서 수집 건수, 이전 실행 대비, 취약점 표(심각도 순 15행), 요약 집계를 확인하고 링크(sbom, report, cyclonedx)로 파일을 내려받습니다.
+3. 같은 프로젝트 이름으로 파일을 바꿔 다시 올리면(1초 이상 간격) 이전 실행 대비가 나옵니다. `LOAD HISTORY`로 과거 점검을 봅니다.
+
+문제가 생기면: 포트 8000이 사용 중이면 `-p 8001:8000`으로 실행하고, 컨테이너 이름이 겹치면 `docker rm -f sbom-web` 후 다시 실행합니다. 요약이 "요약 실패"이면 `docker logs sbom-web`를 봅니다(`HTTP 429`는 하루 한도 초과). "요약 안 함(API 키 없음)"은 키 없이 실행한 것입니다.
+
 ## API
 
 ```bash
